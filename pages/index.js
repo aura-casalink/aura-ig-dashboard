@@ -217,24 +217,26 @@ export default function Dashboard() {
       }))
   }, [data, groupBy, getGroupKey, formatGroupLabel])
 
-  // Cálculo del tiempo medio de respuesta
-  const avgResponseTime = useMemo(() => {
+  // Cálculo del tiempo medio de respuesta (separado por tipo)
+  const responseTimeStats = useMemo(() => {
     const messagesByUser = {}
 
     data.forEach((msg) => {
-      if (!messagesByUser[msg.ig_user_id]) {
-        messagesByUser[msg.ig_user_id] = []
+      if (!msg.ig_username) return
+      if (!messagesByUser[msg.ig_username]) {
+        messagesByUser[msg.ig_username] = []
       }
-      messagesByUser[msg.ig_user_id].push(msg)
+      messagesByUser[msg.ig_username].push(msg)
     })
 
-    const responseTimes = []
+    const startMessageTimes = []
+    const otherMessageTimes = []
 
     Object.values(messagesByUser).forEach((messages) => {
       messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
 
       for (let i = 0; i < messages.length - 1; i++) {
-        if (messages[i].direction === 'outbound') {
+        if (messages[i].direction === 'outbound' && messages[i].message_tag) {
           // Buscar el primer inbound después
           for (let j = i + 1; j < messages.length; j++) {
             if (messages[j].direction === 'inbound') {
@@ -244,25 +246,36 @@ export default function Dashboard() {
               )
               // Solo contar si es razonable (menos de 48h)
               if (diff > 0 && diff < 2880) {
-                responseTimes.push(diff)
+                if (TAG_CATEGORIES.start.includes(messages[i].message_tag)) {
+                  startMessageTimes.push(diff)
+                } else {
+                  otherMessageTimes.push(diff)
+                }
               }
               break
             }
+            // Si hay otro outbound antes de un inbound, salir
+            if (messages[j].direction === 'outbound') break
           }
         }
       }
     })
 
-    if (responseTimes.length === 0) return null
-
-    const avg = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
-    const hours = Math.floor(avg / 60)
-    const minutes = Math.round(avg % 60)
+    const formatTime = (times) => {
+      if (times.length === 0) return null
+      const avg = times.reduce((a, b) => a + b, 0) / times.length
+      const hours = Math.floor(avg / 60)
+      const minutes = Math.round(avg % 60)
+      return {
+        totalMinutes: Math.round(avg),
+        formatted: hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`,
+        sampleSize: times.length,
+      }
+    }
 
     return {
-      totalMinutes: Math.round(avg),
-      formatted: hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`,
-      sampleSize: responseTimes.length,
+      startMessages: formatTime(startMessageTimes),
+      otherMessages: formatTime(otherMessageTimes),
     }
   }, [data])
 
@@ -271,11 +284,28 @@ export default function Dashboard() {
     const messagesByUser = {}
 
     data.forEach((msg) => {
-      if (!messagesByUser[msg.ig_user_id]) {
-        messagesByUser[msg.ig_user_id] = []
+      if (!msg.ig_username) return
+      if (!messagesByUser[msg.ig_username]) {
+        messagesByUser[msg.ig_username] = []
       }
-      messagesByUser[msg.ig_user_id].push(msg)
+      messagesByUser[msg.ig_username].push(msg)
     })
+
+    // Debug: cuántos usuarios tienen mensajes
+    console.log('Usuarios únicos con ig_username:', Object.keys(messagesByUser).length)
+    
+    // Debug: mostrar ejemplo de una conversación
+    const exampleUser = Object.keys(messagesByUser).find(
+      username => messagesByUser[username].some(m => TAG_CATEGORIES.start.includes(m.message_tag))
+    )
+    if (exampleUser) {
+      console.log('Ejemplo conversación de:', exampleUser)
+      console.log(messagesByUser[exampleUser].map(m => ({
+        direction: m.direction,
+        tag: m.message_tag,
+        time: m.created_at
+      })))
+    }
 
     // Ordenar mensajes por usuario
     Object.values(messagesByUser).forEach((messages) => {
@@ -284,9 +314,11 @@ export default function Dashboard() {
 
     // Para cada tag seleccionado, calcular conversión por período
     const conversionByTagAndPeriod = {}
+    const debugStats = {}
 
     selectedTags.forEach((tag) => {
       conversionByTagAndPeriod[tag] = {}
+      debugStats[tag] = { totalSent: 0, totalReplied: 0 }
     })
 
     Object.values(messagesByUser).forEach((messages) => {
@@ -300,11 +332,13 @@ export default function Dashboard() {
         }
 
         conversionByTagAndPeriod[msg.message_tag][period].sent++
+        debugStats[msg.message_tag].totalSent++
 
         // Verificar si hay un inbound después
         for (let j = idx + 1; j < messages.length; j++) {
           if (messages[j].direction === 'inbound') {
             conversionByTagAndPeriod[msg.message_tag][period].replied++
+            debugStats[msg.message_tag].totalReplied++
             break
           }
           // Si hay otro outbound antes de un inbound, no contar como respuesta
@@ -312,6 +346,9 @@ export default function Dashboard() {
         }
       })
     })
+
+    // Debug: mostrar stats por tag
+    console.log('Conversion debug stats:', debugStats)
 
     // Convertir a formato de gráfico
     const allPeriods = new Set()
@@ -432,15 +469,26 @@ export default function Dashboard() {
         )}
 
         {/* Tarjetas KPI */}
-        <div className="grid grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-4 gap-6 mb-6">
           <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-2">Tiempo Medio de Respuesta</p>
+            <p className="text-slate-400 text-sm mb-2">Respuesta a Start Messages</p>
             <p className="text-4xl font-bold text-amber-400">
-              {avgResponseTime ? avgResponseTime.formatted : 'N/A'}
+              {responseTimeStats.startMessages ? responseTimeStats.startMessages.formatted : 'N/A'}
             </p>
-            {avgResponseTime && (
+            {responseTimeStats.startMessages && (
               <p className="text-slate-500 text-sm mt-2">
-                Basado en {avgResponseTime.sampleSize.toLocaleString()} respuestas
+                {responseTimeStats.startMessages.sampleSize.toLocaleString()} respuestas
+              </p>
+            )}
+          </div>
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <p className="text-slate-400 text-sm mb-2">Respuesta a Otros Mensajes</p>
+            <p className="text-4xl font-bold text-orange-400">
+              {responseTimeStats.otherMessages ? responseTimeStats.otherMessages.formatted : 'N/A'}
+            </p>
+            {responseTimeStats.otherMessages && (
+              <p className="text-slate-500 text-sm mt-2">
+                {responseTimeStats.otherMessages.sampleSize.toLocaleString()} respuestas
               </p>
             )}
           </div>
