@@ -1,0 +1,629 @@
+import React, { useState, useEffect, useMemo } from 'react'
+import {
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  LineChart,
+  LabelList,
+} from 'recharts'
+import {
+  format,
+  parseISO,
+  startOfWeek,
+  startOfMonth,
+  differenceInMinutes,
+  isWithinInterval,
+} from 'date-fns'
+import { es } from 'date-fns/locale'
+import { supabase } from '../lib/supabase'
+
+// Configuración de tags por categoría
+const TAG_CATEGORIES = {
+  start: [
+    'startMessage_A',
+    'startMessage_B',
+    'startMessage_C',
+    'startMessage_D',
+    'startMessage_E',
+  ],
+  second: [
+    'secondMessage_A',
+    'secondMessage_B',
+    'secondMessage_C',
+    'secondMessage_D',
+    'secondMessageFollowUp',
+  ],
+  final: [
+    'finalMessage_A',
+    'finalMessage_B',
+    'finalMessage_C',
+    'finalMessage_D',
+    'finalMessageFollowUp',
+  ],
+  lead: ['goodByeMessage_afterLeadCreated'],
+}
+
+const ALL_TAGS = [
+  ...TAG_CATEGORIES.start,
+  ...TAG_CATEGORIES.second,
+  ...TAG_CATEGORIES.final,
+  'goodByeMessage_afterLeadCreated',
+  'goodByeMessage_afterJustContent',
+  'goodByeMessage_afterNotInterested',
+  'phoneFollowUp',
+]
+
+const TAG_LABELS = {
+  startMessage_A: 'Start A (Largo)',
+  startMessage_B: 'Start B (IA)',
+  startMessage_C: 'Start C (Follow)',
+  startMessage_D: 'Start D (Solo casa)',
+  startMessage_E: 'Start E (Comprar/vender)',
+  secondMessage_A: 'Second A (Jorge v1)',
+  secondMessage_B: 'Second B (Jorge v2)',
+  secondMessage_C: 'Second C (España)',
+  secondMessage_D: 'Second D (Jorge v3)',
+  secondMessageFollowUp: 'Second Follow-up',
+  finalMessage_A: 'Final A (Corto)',
+  finalMessage_B: 'Final B (Largo)',
+  finalMessage_C: 'Final C (Audio buyers)',
+  finalMessage_D: 'Final D (Audio sellers)',
+  finalMessageFollowUp: 'Final Follow-up',
+  goodByeMessage_afterLeadCreated: 'Lead Creado',
+  goodByeMessage_afterJustContent: 'Solo Contenido',
+  goodByeMessage_afterNotInterested: 'No Interesado',
+  phoneFollowUp: 'Pedir Teléfono',
+}
+
+export default function Dashboard() {
+  const [data, setData] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  // Filtros
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 30)
+    return d.toISOString().split('T')[0]
+  })
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [groupBy, setGroupBy] = useState('day') // day, week, month
+  const [selectedTags, setSelectedTags] = useState(['startMessage_A', 'startMessage_B'])
+
+  // Fetch data
+  useEffect(() => {
+    fetchData()
+  }, [startDate, endDate])
+
+  const fetchData = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const { data: conversations, error: fetchError } = await supabase
+        .from('ig_conversations')
+        .select('*')
+        .gte('created_at', `${startDate}T00:00:00`)
+        .lte('created_at', `${endDate}T23:59:59`)
+        .order('created_at', { ascending: true })
+
+      if (fetchError) throw fetchError
+      setData(conversations || [])
+    } catch (err) {
+      setError(err.message)
+      console.error('Error fetching data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Función para agrupar por período
+  const getGroupKey = (dateStr) => {
+    const date = parseISO(dateStr)
+    switch (groupBy) {
+      case 'week':
+        return format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+      case 'month':
+        return format(startOfMonth(date), 'yyyy-MM')
+      default:
+        return format(date, 'yyyy-MM-dd')
+    }
+  }
+
+  const formatGroupLabel = (key) => {
+    switch (groupBy) {
+      case 'week':
+        return `Sem ${format(parseISO(key), 'dd MMM', { locale: es })}`
+      case 'month':
+        return format(parseISO(`${key}-01`), 'MMM yyyy', { locale: es })
+      default:
+        return format(parseISO(key), 'dd MMM', { locale: es })
+    }
+  }
+
+  // Procesamiento de datos para el gráfico de barras + línea
+  const deliveriesData = useMemo(() => {
+    const grouped = {}
+
+    data.forEach((msg) => {
+      if (msg.direction !== 'outbound' || !msg.message_tag) return
+
+      const key = getGroupKey(msg.created_at)
+      if (!grouped[key]) {
+        grouped[key] = {
+          period: key,
+          firstDeliveries: 0,
+          secondDeliveries: 0,
+          finalDeliveries: 0,
+          leadsCreated: 0,
+        }
+      }
+
+      if (TAG_CATEGORIES.start.includes(msg.message_tag)) {
+        grouped[key].firstDeliveries++
+      } else if (TAG_CATEGORIES.second.includes(msg.message_tag)) {
+        grouped[key].secondDeliveries++
+      } else if (TAG_CATEGORIES.final.includes(msg.message_tag)) {
+        grouped[key].finalDeliveries++
+      }
+
+      if (msg.message_tag === 'goodByeMessage_afterLeadCreated') {
+        grouped[key].leadsCreated++
+      }
+    })
+
+    return Object.values(grouped)
+      .sort((a, b) => a.period.localeCompare(b.period))
+      .map((item) => ({
+        ...item,
+        label: formatGroupLabel(item.period),
+      }))
+  }, [data, groupBy])
+
+  // Cálculo del tiempo medio de respuesta
+  const avgResponseTime = useMemo(() => {
+    const messagesByUser = {}
+
+    data.forEach((msg) => {
+      if (!messagesByUser[msg.ig_user_id]) {
+        messagesByUser[msg.ig_user_id] = []
+      }
+      messagesByUser[msg.ig_user_id].push(msg)
+    })
+
+    const responseTimes = []
+
+    Object.values(messagesByUser).forEach((messages) => {
+      messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+
+      for (let i = 0; i < messages.length - 1; i++) {
+        if (messages[i].direction === 'outbound') {
+          // Buscar el primer inbound después
+          for (let j = i + 1; j < messages.length; j++) {
+            if (messages[j].direction === 'inbound') {
+              const diff = differenceInMinutes(
+                new Date(messages[j].created_at),
+                new Date(messages[i].created_at)
+              )
+              // Solo contar si es razonable (menos de 48h)
+              if (diff > 0 && diff < 2880) {
+                responseTimes.push(diff)
+              }
+              break
+            }
+          }
+        }
+      }
+    })
+
+    if (responseTimes.length === 0) return null
+
+    const avg = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
+    const hours = Math.floor(avg / 60)
+    const minutes = Math.round(avg % 60)
+
+    return {
+      totalMinutes: Math.round(avg),
+      formatted: hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`,
+      sampleSize: responseTimes.length,
+    }
+  }, [data])
+
+  // Cálculo de tasa de conversión por tag
+  const conversionData = useMemo(() => {
+    const messagesByUser = {}
+
+    data.forEach((msg) => {
+      if (!messagesByUser[msg.ig_user_id]) {
+        messagesByUser[msg.ig_user_id] = []
+      }
+      messagesByUser[msg.ig_user_id].push(msg)
+    })
+
+    // Ordenar mensajes por usuario
+    Object.values(messagesByUser).forEach((messages) => {
+      messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    })
+
+    // Para cada tag seleccionado, calcular conversión por período
+    const conversionByTagAndPeriod = {}
+
+    selectedTags.forEach((tag) => {
+      conversionByTagAndPeriod[tag] = {}
+    })
+
+    Object.values(messagesByUser).forEach((messages) => {
+      messages.forEach((msg, idx) => {
+        if (msg.direction !== 'outbound' || !selectedTags.includes(msg.message_tag)) return
+
+        const period = getGroupKey(msg.created_at)
+
+        if (!conversionByTagAndPeriod[msg.message_tag][period]) {
+          conversionByTagAndPeriod[msg.message_tag][period] = { sent: 0, replied: 0 }
+        }
+
+        conversionByTagAndPeriod[msg.message_tag][period].sent++
+
+        // Verificar si hay un inbound después
+        for (let j = idx + 1; j < messages.length; j++) {
+          if (messages[j].direction === 'inbound') {
+            conversionByTagAndPeriod[msg.message_tag][period].replied++
+            break
+          }
+          // Si hay otro outbound antes de un inbound, no contar como respuesta
+          if (messages[j].direction === 'outbound') break
+        }
+      })
+    })
+
+    // Convertir a formato de gráfico
+    const allPeriods = new Set()
+    Object.values(conversionByTagAndPeriod).forEach((tagData) => {
+      Object.keys(tagData).forEach((period) => allPeriods.add(period))
+    })
+
+    const sortedPeriods = Array.from(allPeriods).sort()
+
+    return sortedPeriods.map((period) => {
+      const row = {
+        period,
+        label: formatGroupLabel(period),
+      }
+
+      selectedTags.forEach((tag) => {
+        const tagData = conversionByTagAndPeriod[tag][period]
+        if (tagData && tagData.sent > 0) {
+          row[tag] = Math.round((tagData.replied / tagData.sent) * 100)
+        } else {
+          row[tag] = null
+        }
+      })
+
+      return row
+    })
+  }, [data, selectedTags, groupBy])
+
+  // Colores para los tags
+  const TAG_COLORS = [
+    '#3b82f6',
+    '#10b981',
+    '#f59e0b',
+    '#ef4444',
+    '#8b5cf6',
+    '#ec4899',
+    '#06b6d4',
+    '#84cc16',
+  ]
+
+  const handleTagToggle = (tag) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    )
+  }
+
+  if (loading && data.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-white text-xl">Cargando datos...</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+            AURA IG Conversations Dashboard
+          </h1>
+          <p className="text-slate-400 mt-1">Análisis de mensajes y conversiones</p>
+        </div>
+
+        {/* Filtros globales */}
+        <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
+          <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Fecha inicio</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Fecha fin</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Agrupar por</label>
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value)}
+                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+              >
+                <option value="day">Día</option>
+                <option value="week">Semana</option>
+                <option value="month">Mes</option>
+              </select>
+            </div>
+            <button
+              onClick={fetchData}
+              className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-medium transition"
+            >
+              Actualizar
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-6">
+            <p className="text-red-300">Error: {error}</p>
+          </div>
+        )}
+
+        {/* Tarjeta de tiempo de respuesta */}
+        <div className="grid grid-cols-3 gap-6 mb-6">
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <p className="text-slate-400 text-sm mb-2">Tiempo Medio de Respuesta</p>
+            <p className="text-4xl font-bold text-amber-400">
+              {avgResponseTime ? avgResponseTime.formatted : 'N/A'}
+            </p>
+            {avgResponseTime && (
+              <p className="text-slate-500 text-sm mt-2">
+                Basado en {avgResponseTime.sampleSize} respuestas
+              </p>
+            )}
+          </div>
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <p className="text-slate-400 text-sm mb-2">Total Mensajes</p>
+            <p className="text-4xl font-bold text-blue-400">{data.length}</p>
+            <p className="text-slate-500 text-sm mt-2">En el período seleccionado</p>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <p className="text-slate-400 text-sm mb-2">Leads Creados</p>
+            <p className="text-4xl font-bold text-emerald-400">
+              {data.filter((m) => m.message_tag === 'goodByeMessage_afterLeadCreated').length}
+            </p>
+            <p className="text-slate-500 text-sm mt-2">En el período seleccionado</p>
+          </div>
+        </div>
+
+        {/* Gráfico de entregas (barras + línea) */}
+        <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
+          <h2 className="text-lg font-semibold mb-4">
+            Entregas de Mensajes y Leads por{' '}
+            {groupBy === 'day' ? 'Día' : groupBy === 'week' ? 'Semana' : 'Mes'}
+          </h2>
+          <ResponsiveContainer width="100%" height={400}>
+            <ComposedChart data={deliveriesData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis
+                dataKey="label"
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8', fontSize: 11 }}
+                angle={-45}
+                textAnchor="end"
+                height={60}
+              />
+              <YAxis
+                yAxisId="left"
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8' }}
+                label={{
+                  value: 'Mensajes',
+                  angle: -90,
+                  position: 'insideLeft',
+                  fill: '#94a3b8',
+                }}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                stroke="#10b981"
+                tick={{ fill: '#10b981' }}
+                label={{
+                  value: 'Leads',
+                  angle: 90,
+                  position: 'insideRight',
+                  fill: '#10b981',
+                }}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                }}
+                labelStyle={{ color: '#f1f5f9' }}
+              />
+              <Legend />
+              <Bar
+                yAxisId="left"
+                dataKey="firstDeliveries"
+                name="Start Messages"
+                fill="#3b82f6"
+                stackId="stack"
+                radius={[0, 0, 0, 0]}
+              >
+                <LabelList
+                  dataKey="firstDeliveries"
+                  position="inside"
+                  fill="#fff"
+                  fontSize={10}
+                />
+              </Bar>
+              <Bar
+                yAxisId="left"
+                dataKey="secondDeliveries"
+                name="Second Messages"
+                fill="#f59e0b"
+                stackId="stack"
+              >
+                <LabelList
+                  dataKey="secondDeliveries"
+                  position="inside"
+                  fill="#fff"
+                  fontSize={10}
+                />
+              </Bar>
+              <Bar
+                yAxisId="left"
+                dataKey="finalDeliveries"
+                name="Final Messages"
+                fill="#8b5cf6"
+                stackId="stack"
+                radius={[4, 4, 0, 0]}
+              >
+                <LabelList
+                  dataKey="finalDeliveries"
+                  position="inside"
+                  fill="#fff"
+                  fontSize={10}
+                />
+              </Bar>
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="leadsCreated"
+                name="Leads Creados"
+                stroke="#10b981"
+                strokeWidth={3}
+                dot={{ fill: '#10b981', strokeWidth: 2, r: 5 }}
+              >
+                <LabelList
+                  dataKey="leadsCreated"
+                  position="top"
+                  fill="#10b981"
+                  fontSize={12}
+                  fontWeight="bold"
+                />
+              </Line>
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Selector de tags para conversión */}
+        <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Tasa de Conversión por Tipo de Mensaje</h2>
+
+          {/* Tag selector */}
+          <div className="mb-4">
+            <p className="text-sm text-slate-400 mb-2">Selecciona los mensajes a comparar:</p>
+            <div className="flex flex-wrap gap-2">
+              {ALL_TAGS.map((tag, idx) => (
+                <button
+                  key={tag}
+                  onClick={() => handleTagToggle(tag)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    selectedTags.includes(tag)
+                      ? 'text-white'
+                      : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                  }`}
+                  style={{
+                    backgroundColor: selectedTags.includes(tag)
+                      ? TAG_COLORS[selectedTags.indexOf(tag) % TAG_COLORS.length]
+                      : undefined,
+                  }}
+                >
+                  {TAG_LABELS[tag] || tag}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Gráfico de conversión */}
+          <ResponsiveContainer width="100%" height={350}>
+            <LineChart data={conversionData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis
+                dataKey="label"
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8', fontSize: 11 }}
+                angle={-45}
+                textAnchor="end"
+                height={60}
+              />
+              <YAxis
+                stroke="#94a3b8"
+                tick={{ fill: '#94a3b8' }}
+                domain={[0, 100]}
+                tickFormatter={(v) => `${v}%`}
+                label={{
+                  value: 'Tasa de respuesta %',
+                  angle: -90,
+                  position: 'insideLeft',
+                  fill: '#94a3b8',
+                }}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                }}
+                labelStyle={{ color: '#f1f5f9' }}
+                formatter={(value) => (value !== null ? `${value}%` : 'Sin datos')}
+              />
+              <Legend />
+              {selectedTags.map((tag, idx) => (
+                <Line
+                  key={tag}
+                  type="monotone"
+                  dataKey={tag}
+                  name={TAG_LABELS[tag] || tag}
+                  stroke={TAG_COLORS[idx % TAG_COLORS.length]}
+                  strokeWidth={2}
+                  dot={{ fill: TAG_COLORS[idx % TAG_COLORS.length], strokeWidth: 2, r: 4 }}
+                  connectNulls
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+
+          <p className="text-slate-500 text-xs mt-3">
+            * La tasa de conversión mide el % de mensajes outbound que recibieron una respuesta
+            inbound del usuario
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center text-slate-500 text-sm mt-8">
+          <p>AURA PropTech • Dashboard de Conversaciones IG</p>
+        </div>
+      </div>
+    </div>
+  )
+}
