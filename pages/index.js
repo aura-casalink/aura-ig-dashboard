@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   ComposedChart,
   Bar,
@@ -18,7 +18,6 @@ import {
   startOfWeek,
   startOfMonth,
   differenceInMinutes,
-  isWithinInterval,
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { supabase } from '../lib/supabase'
@@ -85,6 +84,7 @@ export default function Dashboard() {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [totalRecords, setTotalRecords] = useState(0)
 
   // Filtros
   const [startDate, setStartDate] = useState(() => {
@@ -96,35 +96,62 @@ export default function Dashboard() {
   const [groupBy, setGroupBy] = useState('day') // day, week, month
   const [selectedTags, setSelectedTags] = useState(['startMessage_A', 'startMessage_B'])
 
-  // Fetch data
-  useEffect(() => {
-    fetchData()
-  }, [startDate, endDate])
-
-  const fetchData = async () => {
+  // Fetch data con paginación para superar el límite de 1000
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
 
     try {
-      const { data: conversations, error: fetchError } = await supabase
-        .from('ig_conversations')
-        .select('*')
-        .gte('created_at', `${startDate}T00:00:00`)
-        .lte('created_at', `${endDate}T23:59:59`)
-        .order('created_at', { ascending: true })
+      const allData = []
+      let page = 0
+      const pageSize = 1000
+      let hasMore = true
 
-      if (fetchError) throw fetchError
-      setData(conversations || [])
+      // Formato de fechas para Supabase
+      const fromDate = `${startDate}T00:00:00.000Z`
+      const toDate = `${endDate}T23:59:59.999Z`
+
+      console.log('Fetching data from', fromDate, 'to', toDate)
+
+      while (hasMore) {
+        const { data: conversations, error: fetchError } = await supabase
+          .from('ig_conversations')
+          .select('*')
+          .gte('created_at', fromDate)
+          .lte('created_at', toDate)
+          .order('created_at', { ascending: true })
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (fetchError) throw fetchError
+
+        if (conversations && conversations.length > 0) {
+          allData.push(...conversations)
+          console.log(`Page ${page + 1}: fetched ${conversations.length} records`)
+          hasMore = conversations.length === pageSize
+          page++
+        } else {
+          hasMore = false
+        }
+      }
+
+      console.log(`Total records fetched: ${allData.length}`)
+      setData(allData)
+      setTotalRecords(allData.length)
     } catch (err) {
       setError(err.message)
       console.error('Error fetching data:', err)
     } finally {
       setLoading(false)
     }
-  }
+  }, [startDate, endDate])
+
+  // Fetch inicial y cuando cambian las fechas
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   // Función para agrupar por período
-  const getGroupKey = (dateStr) => {
+  const getGroupKey = useCallback((dateStr) => {
     const date = parseISO(dateStr)
     switch (groupBy) {
       case 'week':
@@ -134,18 +161,22 @@ export default function Dashboard() {
       default:
         return format(date, 'yyyy-MM-dd')
     }
-  }
+  }, [groupBy])
 
-  const formatGroupLabel = (key) => {
-    switch (groupBy) {
-      case 'week':
-        return `Sem ${format(parseISO(key), 'dd MMM', { locale: es })}`
-      case 'month':
-        return format(parseISO(`${key}-01`), 'MMM yyyy', { locale: es })
-      default:
-        return format(parseISO(key), 'dd MMM', { locale: es })
+  const formatGroupLabel = useCallback((key) => {
+    try {
+      switch (groupBy) {
+        case 'week':
+          return `Sem ${format(parseISO(key), 'dd MMM', { locale: es })}`
+        case 'month':
+          return format(parseISO(`${key}-01`), 'MMM yyyy', { locale: es })
+        default:
+          return format(parseISO(key), 'dd MMM', { locale: es })
+      }
+    } catch (e) {
+      return key
     }
-  }
+  }, [groupBy])
 
   // Procesamiento de datos para el gráfico de barras + línea
   const deliveriesData = useMemo(() => {
@@ -184,7 +215,7 @@ export default function Dashboard() {
         ...item,
         label: formatGroupLabel(item.period),
       }))
-  }, [data, groupBy])
+  }, [data, groupBy, getGroupKey, formatGroupLabel])
 
   // Cálculo del tiempo medio de respuesta
   const avgResponseTime = useMemo(() => {
@@ -307,7 +338,7 @@ export default function Dashboard() {
 
       return row
     })
-  }, [data, selectedTags, groupBy])
+  }, [data, selectedTags, groupBy, getGroupKey, formatGroupLabel])
 
   // Colores para los tags
   const TAG_COLORS = [
@@ -381,11 +412,17 @@ export default function Dashboard() {
             </div>
             <button
               onClick={fetchData}
-              className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-medium transition"
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed px-6 py-2 rounded-lg font-medium transition"
             >
-              Actualizar
+              {loading ? 'Cargando...' : 'Actualizar'}
             </button>
           </div>
+          {totalRecords > 0 && (
+            <p className="text-slate-500 text-sm mt-3">
+              {totalRecords.toLocaleString()} registros cargados ({startDate} → {endDate})
+            </p>
+          )}
         </div>
 
         {error && (
@@ -394,7 +431,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Tarjeta de tiempo de respuesta */}
+        {/* Tarjetas KPI */}
         <div className="grid grid-cols-3 gap-6 mb-6">
           <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
             <p className="text-slate-400 text-sm mb-2">Tiempo Medio de Respuesta</p>
@@ -403,13 +440,13 @@ export default function Dashboard() {
             </p>
             {avgResponseTime && (
               <p className="text-slate-500 text-sm mt-2">
-                Basado en {avgResponseTime.sampleSize} respuestas
+                Basado en {avgResponseTime.sampleSize.toLocaleString()} respuestas
               </p>
             )}
           </div>
           <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
             <p className="text-slate-400 text-sm mb-2">Total Mensajes</p>
-            <p className="text-4xl font-bold text-blue-400">{data.length}</p>
+            <p className="text-4xl font-bold text-blue-400">{data.length.toLocaleString()}</p>
             <p className="text-slate-500 text-sm mt-2">En el período seleccionado</p>
           </div>
           <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
@@ -427,112 +464,118 @@ export default function Dashboard() {
             Entregas de Mensajes y Leads por{' '}
             {groupBy === 'day' ? 'Día' : groupBy === 'week' ? 'Semana' : 'Mes'}
           </h2>
-          <ResponsiveContainer width="100%" height={400}>
-            <ComposedChart data={deliveriesData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis
-                dataKey="label"
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8', fontSize: 11 }}
-                angle={-45}
-                textAnchor="end"
-                height={60}
-              />
-              <YAxis
-                yAxisId="left"
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8' }}
-                label={{
-                  value: 'Mensajes',
-                  angle: -90,
-                  position: 'insideLeft',
-                  fill: '#94a3b8',
-                }}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                stroke="#10b981"
-                tick={{ fill: '#10b981' }}
-                label={{
-                  value: 'Leads',
-                  angle: 90,
-                  position: 'insideRight',
-                  fill: '#10b981',
-                }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #334155',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#f1f5f9' }}
-              />
-              <Legend />
-              <Bar
-                yAxisId="left"
-                dataKey="firstDeliveries"
-                name="Start Messages"
-                fill="#3b82f6"
-                stackId="stack"
-                radius={[0, 0, 0, 0]}
-              >
-                <LabelList
+          {deliveriesData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={400}>
+              <ComposedChart data={deliveriesData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis
+                  dataKey="label"
+                  stroke="#94a3b8"
+                  tick={{ fill: '#94a3b8', fontSize: 11 }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis
+                  yAxisId="left"
+                  stroke="#94a3b8"
+                  tick={{ fill: '#94a3b8' }}
+                  label={{
+                    value: 'Mensajes',
+                    angle: -90,
+                    position: 'insideLeft',
+                    fill: '#94a3b8',
+                  }}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#10b981"
+                  tick={{ fill: '#10b981' }}
+                  label={{
+                    value: 'Leads',
+                    angle: 90,
+                    position: 'insideRight',
+                    fill: '#10b981',
+                  }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #334155',
+                    borderRadius: '8px',
+                  }}
+                  labelStyle={{ color: '#f1f5f9' }}
+                />
+                <Legend />
+                <Bar
+                  yAxisId="left"
                   dataKey="firstDeliveries"
-                  position="inside"
-                  fill="#fff"
-                  fontSize={10}
-                />
-              </Bar>
-              <Bar
-                yAxisId="left"
-                dataKey="secondDeliveries"
-                name="Second Messages"
-                fill="#f59e0b"
-                stackId="stack"
-              >
-                <LabelList
+                  name="Start Messages"
+                  fill="#3b82f6"
+                  stackId="stack"
+                  radius={[0, 0, 0, 0]}
+                >
+                  <LabelList
+                    dataKey="firstDeliveries"
+                    position="inside"
+                    fill="#fff"
+                    fontSize={10}
+                  />
+                </Bar>
+                <Bar
+                  yAxisId="left"
                   dataKey="secondDeliveries"
-                  position="inside"
-                  fill="#fff"
-                  fontSize={10}
-                />
-              </Bar>
-              <Bar
-                yAxisId="left"
-                dataKey="finalDeliveries"
-                name="Final Messages"
-                fill="#8b5cf6"
-                stackId="stack"
-                radius={[4, 4, 0, 0]}
-              >
-                <LabelList
+                  name="Second Messages"
+                  fill="#f59e0b"
+                  stackId="stack"
+                >
+                  <LabelList
+                    dataKey="secondDeliveries"
+                    position="inside"
+                    fill="#fff"
+                    fontSize={10}
+                  />
+                </Bar>
+                <Bar
+                  yAxisId="left"
                   dataKey="finalDeliveries"
-                  position="inside"
-                  fill="#fff"
-                  fontSize={10}
-                />
-              </Bar>
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="leadsCreated"
-                name="Leads Creados"
-                stroke="#10b981"
-                strokeWidth={3}
-                dot={{ fill: '#10b981', strokeWidth: 2, r: 5 }}
-              >
-                <LabelList
+                  name="Final Messages"
+                  fill="#8b5cf6"
+                  stackId="stack"
+                  radius={[4, 4, 0, 0]}
+                >
+                  <LabelList
+                    dataKey="finalDeliveries"
+                    position="inside"
+                    fill="#fff"
+                    fontSize={10}
+                  />
+                </Bar>
+                <Line
+                  yAxisId="right"
+                  type="monotone"
                   dataKey="leadsCreated"
-                  position="top"
-                  fill="#10b981"
-                  fontSize={12}
-                  fontWeight="bold"
-                />
-              </Line>
-            </ComposedChart>
-          </ResponsiveContainer>
+                  name="Leads Creados"
+                  stroke="#10b981"
+                  strokeWidth={3}
+                  dot={{ fill: '#10b981', strokeWidth: 2, r: 5 }}
+                >
+                  <LabelList
+                    dataKey="leadsCreated"
+                    position="top"
+                    fill="#10b981"
+                    fontSize={12}
+                    fontWeight="bold"
+                  />
+                </Line>
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-slate-500">
+              No hay datos con message_tag en el período seleccionado
+            </div>
+          )}
         </div>
 
         {/* Selector de tags para conversión */}
@@ -565,53 +608,59 @@ export default function Dashboard() {
           </div>
 
           {/* Gráfico de conversión */}
-          <ResponsiveContainer width="100%" height={350}>
-            <LineChart data={conversionData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis
-                dataKey="label"
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8', fontSize: 11 }}
-                angle={-45}
-                textAnchor="end"
-                height={60}
-              />
-              <YAxis
-                stroke="#94a3b8"
-                tick={{ fill: '#94a3b8' }}
-                domain={[0, 100]}
-                tickFormatter={(v) => `${v}%`}
-                label={{
-                  value: 'Tasa de respuesta %',
-                  angle: -90,
-                  position: 'insideLeft',
-                  fill: '#94a3b8',
-                }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #334155',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: '#f1f5f9' }}
-                formatter={(value) => (value !== null ? `${value}%` : 'Sin datos')}
-              />
-              <Legend />
-              {selectedTags.map((tag, idx) => (
-                <Line
-                  key={tag}
-                  type="monotone"
-                  dataKey={tag}
-                  name={TAG_LABELS[tag] || tag}
-                  stroke={TAG_COLORS[idx % TAG_COLORS.length]}
-                  strokeWidth={2}
-                  dot={{ fill: TAG_COLORS[idx % TAG_COLORS.length], strokeWidth: 2, r: 4 }}
-                  connectNulls
+          {conversionData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={350}>
+              <LineChart data={conversionData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis
+                  dataKey="label"
+                  stroke="#94a3b8"
+                  tick={{ fill: '#94a3b8', fontSize: 11 }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
                 />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+                <YAxis
+                  stroke="#94a3b8"
+                  tick={{ fill: '#94a3b8' }}
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
+                  label={{
+                    value: 'Tasa de respuesta %',
+                    angle: -90,
+                    position: 'insideLeft',
+                    fill: '#94a3b8',
+                  }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #334155',
+                    borderRadius: '8px',
+                  }}
+                  labelStyle={{ color: '#f1f5f9' }}
+                  formatter={(value) => (value !== null ? `${value}%` : 'Sin datos')}
+                />
+                <Legend />
+                {selectedTags.map((tag, idx) => (
+                  <Line
+                    key={tag}
+                    type="monotone"
+                    dataKey={tag}
+                    name={TAG_LABELS[tag] || tag}
+                    stroke={TAG_COLORS[idx % TAG_COLORS.length]}
+                    strokeWidth={2}
+                    dot={{ fill: TAG_COLORS[idx % TAG_COLORS.length], strokeWidth: 2, r: 4 }}
+                    connectNulls
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-slate-500">
+              Selecciona al menos un tag para ver la conversión
+            </div>
+          )}
 
           <p className="text-slate-500 text-xs mt-3">
             * La tasa de conversión mide el % de mensajes outbound que recibieron una respuesta
