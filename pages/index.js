@@ -95,6 +95,7 @@ export default function Dashboard() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0])
   const [groupBy, setGroupBy] = useState('day') // day, week, month
   const [selectedTags, setSelectedTags] = useState(['startMessage_A', 'startMessage_B'])
+  const [visibleSeries, setVisibleSeries] = useState(['start', 'second', 'final', 'leads'])
 
   // Fetch data con paginación para superar el límite de 1000
   const fetchData = useCallback(async () => {
@@ -219,6 +220,7 @@ export default function Dashboard() {
 
   // Cálculo del tiempo medio de respuesta (separado por tipo)
   const responseTimeStats = useMemo(() => {
+    // Agrupar SOLO por ig_username (conversation_link es diferente para inbound/outbound)
     const messagesByUser = {}
 
     data.forEach((msg) => {
@@ -228,6 +230,12 @@ export default function Dashboard() {
       }
       messagesByUser[msg.ig_username].push(msg)
     })
+
+    // Debug
+    const usersWithBoth = Object.values(messagesByUser).filter(msgs => 
+      msgs.some(m => m.direction === 'outbound') && msgs.some(m => m.direction === 'inbound')
+    ).length
+    console.log('Usuarios con outbound E inbound:', usersWithBoth)
 
     const startMessageTimes = []
     const otherMessageTimes = []
@@ -261,6 +269,9 @@ export default function Dashboard() {
       }
     })
 
+    console.log('Tiempos start encontrados:', startMessageTimes.length)
+    console.log('Tiempos otros encontrados:', otherMessageTimes.length)
+
     const formatTime = (times) => {
       if (times.length === 0) return null
       const avg = times.reduce((a, b) => a + b, 0) / times.length
@@ -281,6 +292,7 @@ export default function Dashboard() {
 
   // Cálculo de tasa de conversión por tag
   const conversionData = useMemo(() => {
+    // Agrupar SOLO por ig_username
     const messagesByUser = {}
 
     data.forEach((msg) => {
@@ -291,21 +303,7 @@ export default function Dashboard() {
       messagesByUser[msg.ig_username].push(msg)
     })
 
-    // Debug: cuántos usuarios tienen mensajes
-    console.log('Usuarios únicos con ig_username:', Object.keys(messagesByUser).length)
-    
-    // Debug: mostrar ejemplo de una conversación
-    const exampleUser = Object.keys(messagesByUser).find(
-      username => messagesByUser[username].some(m => TAG_CATEGORIES.start.includes(m.message_tag))
-    )
-    if (exampleUser) {
-      console.log('Ejemplo conversación de:', exampleUser)
-      console.log(messagesByUser[exampleUser].map(m => ({
-        direction: m.direction,
-        tag: m.message_tag,
-        time: m.created_at
-      })))
-    }
+    console.log('Usuarios únicos para conversión:', Object.keys(messagesByUser).length)
 
     // Ordenar mensajes por usuario
     Object.values(messagesByUser).forEach((messages) => {
@@ -393,6 +391,19 @@ export default function Dashboard() {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     )
+  }
+
+  const handleSeriesToggle = (series) => {
+    setVisibleSeries((prev) =>
+      prev.includes(series) ? prev.filter((s) => s !== series) : [...prev, series]
+    )
+  }
+
+  const SERIES_CONFIG = {
+    start: { label: 'Start Messages', color: '#3b82f6', dataKey: 'firstDeliveries' },
+    second: { label: 'Second Messages', color: '#f59e0b', dataKey: 'secondDeliveries' },
+    final: { label: 'Final Messages', color: '#8b5cf6', dataKey: 'finalDeliveries' },
+    leads: { label: 'Leads Creados', color: '#10b981', dataKey: 'leadsCreated' },
   }
 
   if (loading && data.length === 0) {
@@ -508,10 +519,30 @@ export default function Dashboard() {
 
         {/* Gráfico de entregas (barras + línea) */}
         <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
-          <h2 className="text-lg font-semibold mb-4">
-            Entregas de Mensajes y Leads por{' '}
-            {groupBy === 'day' ? 'Día' : groupBy === 'week' ? 'Semana' : 'Mes'}
-          </h2>
+          <div className="flex justify-between items-start mb-4">
+            <h2 className="text-lg font-semibold">
+              Entregas de Mensajes y Leads por{' '}
+              {groupBy === 'day' ? 'Día' : groupBy === 'week' ? 'Semana' : 'Mes'}
+            </h2>
+            <div className="flex gap-2">
+              {Object.entries(SERIES_CONFIG).map(([key, config]) => (
+                <button
+                  key={key}
+                  onClick={() => handleSeriesToggle(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
+                    visibleSeries.includes(key)
+                      ? 'text-white border-transparent'
+                      : 'bg-transparent text-slate-400 border-slate-600 hover:border-slate-500'
+                  }`}
+                  style={{
+                    backgroundColor: visibleSeries.includes(key) ? config.color : undefined,
+                  }}
+                >
+                  {config.label}
+                </button>
+              ))}
+            </div>
+          </div>
           {deliveriesData.length > 0 ? (
             <ResponsiveContainer width="100%" height={400}>
               <ComposedChart data={deliveriesData}>
@@ -556,67 +587,75 @@ export default function Dashboard() {
                   labelStyle={{ color: '#f1f5f9' }}
                 />
                 <Legend />
-                <Bar
-                  yAxisId="left"
-                  dataKey="firstDeliveries"
-                  name="Start Messages"
-                  fill="#3b82f6"
-                  stackId="stack"
-                  radius={[0, 0, 0, 0]}
-                >
-                  <LabelList
+                {visibleSeries.includes('start') && (
+                  <Bar
+                    yAxisId="left"
                     dataKey="firstDeliveries"
-                    position="inside"
-                    fill="#fff"
-                    fontSize={10}
-                  />
-                </Bar>
-                <Bar
-                  yAxisId="left"
-                  dataKey="secondDeliveries"
-                  name="Second Messages"
-                  fill="#f59e0b"
-                  stackId="stack"
-                >
-                  <LabelList
+                    name="Start Messages"
+                    fill="#3b82f6"
+                    stackId="stack"
+                    radius={[0, 0, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey="firstDeliveries"
+                      position="inside"
+                      fill="#fff"
+                      fontSize={10}
+                    />
+                  </Bar>
+                )}
+                {visibleSeries.includes('second') && (
+                  <Bar
+                    yAxisId="left"
                     dataKey="secondDeliveries"
-                    position="inside"
-                    fill="#fff"
-                    fontSize={10}
-                  />
-                </Bar>
-                <Bar
-                  yAxisId="left"
-                  dataKey="finalDeliveries"
-                  name="Final Messages"
-                  fill="#8b5cf6"
-                  stackId="stack"
-                  radius={[4, 4, 0, 0]}
-                >
-                  <LabelList
+                    name="Second Messages"
+                    fill="#f59e0b"
+                    stackId="stack"
+                  >
+                    <LabelList
+                      dataKey="secondDeliveries"
+                      position="inside"
+                      fill="#fff"
+                      fontSize={10}
+                    />
+                  </Bar>
+                )}
+                {visibleSeries.includes('final') && (
+                  <Bar
+                    yAxisId="left"
                     dataKey="finalDeliveries"
-                    position="inside"
-                    fill="#fff"
-                    fontSize={10}
-                  />
-                </Bar>
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="leadsCreated"
-                  name="Leads Creados"
-                  stroke="#10b981"
-                  strokeWidth={3}
-                  dot={{ fill: '#10b981', strokeWidth: 2, r: 5 }}
-                >
-                  <LabelList
+                    name="Final Messages"
+                    fill="#8b5cf6"
+                    stackId="stack"
+                    radius={[4, 4, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey="finalDeliveries"
+                      position="inside"
+                      fill="#fff"
+                      fontSize={10}
+                    />
+                  </Bar>
+                )}
+                {visibleSeries.includes('leads') && (
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
                     dataKey="leadsCreated"
-                    position="top"
-                    fill="#10b981"
-                    fontSize={12}
-                    fontWeight="bold"
-                  />
-                </Line>
+                    name="Leads Creados"
+                    stroke="#10b981"
+                    strokeWidth={3}
+                    dot={{ fill: '#10b981', strokeWidth: 2, r: 5 }}
+                  >
+                    <LabelList
+                      dataKey="leadsCreated"
+                      position="top"
+                      fill="#10b981"
+                      fontSize={12}
+                      fontWeight="bold"
+                    />
+                  </Line>
+                )}
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
