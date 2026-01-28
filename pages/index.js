@@ -415,7 +415,10 @@ export default function Dashboard() {
       conversionByTagAndPeriod[tag] = {}
     })
 
-    // Para cada usuario, verificar si el mensaje tiene un inbound inmediatamente después
+    // Tags de finalMessage para la lógica especial de secondMessage
+    const finalMessageTags = ['finalMessage_A', 'finalMessage_B', 'finalMessage_C', 'finalMessage_D']
+
+    // Para cada usuario, verificar conversión según el tipo de mensaje
     Object.values(messagesByUser).forEach((messages) => {
       messages.forEach((msg, idx) => {
         if (msg.direction !== 'outbound' || !categoryTags.includes(msg.message_tag)) return
@@ -430,8 +433,50 @@ export default function Dashboard() {
         conversionByTagAndPeriod[tag][period].sent++
         statsByTag[tag].sent++
 
-        // ¿El siguiente mensaje es un inbound?
-        if (idx + 1 < messages.length && messages[idx + 1].direction === 'inbound') {
+        let isConverted = false
+
+        // Lógica especial para secondMessages
+        if (conversionCategory === 'second') {
+          // Buscar el siguiente finalMessage
+          let finalIdx = null
+          let finalTime = null
+          for (let j = idx + 1; j < messages.length; j++) {
+            if (finalMessageTags.includes(messages[j].message_tag)) {
+              finalIdx = j
+              finalTime = new Date(messages[j].created_at)
+              break
+            }
+          }
+
+          if (finalIdx !== null) {
+            // Opción 1: ¿Hay inbound entre second y final?
+            for (let j = idx + 1; j < finalIdx; j++) {
+              if (messages[j].direction === 'inbound') {
+                isConverted = true
+                break
+              }
+            }
+
+            // Opción 2: ¿Hay inbound hasta 10 seg después del final?
+            if (!isConverted && finalIdx + 1 < messages.length) {
+              const nextMsg = messages[finalIdx + 1]
+              if (nextMsg.direction === 'inbound') {
+                const inboundTime = new Date(nextMsg.created_at)
+                const diffSeconds = (inboundTime - finalTime) / 1000
+                if (diffSeconds <= 10) {
+                  isConverted = true
+                }
+              }
+            }
+          }
+        } else {
+          // Lógica original para start y final: siguiente mensaje es inbound
+          if (idx + 1 < messages.length && messages[idx + 1].direction === 'inbound') {
+            isConverted = true
+          }
+        }
+
+        if (isConverted) {
           conversionByTagAndPeriod[tag][period].converted++
           statsByTag[tag].converted++
         }
