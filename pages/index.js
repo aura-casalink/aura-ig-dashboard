@@ -457,13 +457,13 @@ export default function Dashboard() {
               }
             }
 
-            // Opción 2: ¿Hay inbound hasta 10 seg después del final?
+            // Opción 2: ¿Hay inbound hasta 60 seg después del final? (cubre 95% de casos por latencia)
             if (!isConverted && finalIdx + 1 < messages.length) {
               const nextMsg = messages[finalIdx + 1]
               if (nextMsg.direction === 'inbound') {
                 const inboundTime = new Date(nextMsg.created_at)
                 const diffSeconds = (inboundTime - finalTime) / 1000
-                if (diffSeconds <= 10) {
+                if (diffSeconds <= 60) {
                   isConverted = true
                 }
               }
