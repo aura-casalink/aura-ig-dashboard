@@ -967,6 +967,7 @@ export default function Dashboard() {
         <div className="text-center text-slate-500 text-sm mt-8">
           <p>AURA PropTech • Dashboard de Conversaciones IG</p>
         </div>
+        </div>
       </div>
     </div>
   )
