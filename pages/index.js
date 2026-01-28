@@ -77,6 +77,23 @@ const CONVERSION_CATEGORY_LABELS = {
   final: 'Final Messages',
 }
 
+// Textos completos de los mensajes para el mockup
+const MESSAGE_TEXTS = {
+  startMessage_A: "Hey ya estoy aquí, muchas gracias por seguirnos! quiero preguntarte algo, ¿Nos empezaste a seguir por el contenido o te gustaría que te cuente cómo trabajamos para encontrar viviendas con mejor calidad-precio usando IA?",
+  startMessage_B: "Hola, te interesa saber mas sobre nuestra IA?",
+  startMessage_C: "Gracias por el follow, quieres que nuestra IA te encuentre casa?",
+  startMessage_D: "Nuestra IA solo esta disponible para gente que quiere una casa, es tu caso?",
+  startMessage_E: "Nuestra IA solo esta disponible para gente que quiere comprar y vender, cual es tu caso?",
+  secondMessage_A: "Hey, soy Jorge muchas gracias por seguirnos. Te gustaría que te cuente cómo trabajamos para encontrar viviendas con mejor calidad-precio usando IA?",
+  secondMessage_B: "Hola soy Jorge muchas gracias por seguirnos! Te gustaría que te cuente cómo trabajamos para encontrar viviendas con mejor calidad-precio usando IA?",
+  secondMessage_C: "Súper, antes de contarte como trabajamos, damos servicio en toda España, pero solo en compra, no en alquiler. ¿Tú estás comprando?",
+  secondMessage_D: "Hey, soy Jorge muchas gracias por seguirnos. Te gustaría que te cuente cómo te podemos ayudar a comprar casa con mejor calidad-precio usando IA?",
+  finalMessage_A: "Perfecto, te explico como trabajamos muy rápido. Lo que habrás comprobado es que ahora mismo encontrar buenas oportunidades de vivienda es muy difícil. Por eso creamos una IA que busca por todo internet y te manda solo las mejores opciones.",
+  finalMessage_B: "Perfecto, te lo explico rápido. Como habras visto ahora mismo encontrar buenas oportunidades es complicado, por eso usamos una IA que busca por todo internet y te envía solo las mejores opciones. Si alguna encaja, nos encargamos también de negociar el precio y de todo el proceso. Es un servicio llevado por un equipo profesional apoyado en IA, así que me gustaría conocer tu caso para ver si encaja. Si te interesa, déjame tu número y seguimos por WhatsApp. ¡Gracias!",
+  finalMessage_C: "🎧 Audio: Explicación para compradores",
+  finalMessage_D: "🎧 Audio: Explicación para vendedores",
+}
+
 const ALL_TAGS = [
   ...TAG_CATEGORIES.start,
   ...TAG_CATEGORIES.second,
@@ -88,20 +105,20 @@ const ALL_TAGS = [
 ]
 
 const TAG_LABELS = {
-  startMessage_A: 'Start A (Largo)',
-  startMessage_B: 'Start B (IA)',
-  startMessage_C: 'Start C (Follow)',
-  startMessage_D: 'Start D (Solo casa)',
-  startMessage_E: 'Start E (Comprar/vender)',
-  secondMessage_A: 'Second A (Jorge v1)',
-  secondMessage_B: 'Second B (Jorge v2)',
-  secondMessage_C: 'Second C (España)',
-  secondMessage_D: 'Second D (Jorge v3)',
+  startMessage_A: 'Start A',
+  startMessage_B: 'Start B',
+  startMessage_C: 'Start C',
+  startMessage_D: 'Start D',
+  startMessage_E: 'Start E',
+  secondMessage_A: 'Second A',
+  secondMessage_B: 'Second B',
+  secondMessage_C: 'Second C',
+  secondMessage_D: 'Second D',
   secondMessageFollowUp: 'Second Follow-up',
-  finalMessage_A: 'Final A (Corto)',
-  finalMessage_B: 'Final B (Largo)',
-  finalMessage_C: 'Final C (Audio buyers)',
-  finalMessage_D: 'Final D (Audio sellers)',
+  finalMessage_A: 'Final A',
+  finalMessage_B: 'Final B',
+  finalMessage_C: 'Final C',
+  finalMessage_D: 'Final D',
   finalMessageFollowUp: 'Final Follow-up',
   goodByeMessage_afterLeadCreated: 'Lead Creado',
   goodByeMessage_afterJustContent: 'Solo Contenido',
@@ -249,7 +266,8 @@ export default function Dashboard() {
   }, [data, groupBy, getGroupKey, formatGroupLabel])
 
   // Cálculo del tiempo medio de respuesta
-  // LÓGICA: Tiempo desde startMessage hasta secondMessage/finalMessage (cuando pulsó el botón)
+  // - Start: desde startMessage hasta inbound/second/final (primera respuesta)
+  // - Otros: desde second hasta final, desde final hasta goodbye
   const responseTimeStats = useMemo(() => {
     const messagesByUser = {}
 
@@ -267,9 +285,12 @@ export default function Dashboard() {
     })
 
     const startMessageTimes = []
+    const otherMessageTimes = []
+
+    const goodbyeTags = ['goodByeMessage_afterLeadCreated', 'goodByeMessage_afterJustContent', 'goodByeMessage_afterNotInterested']
 
     Object.values(messagesByUser).forEach((messages) => {
-      // Encontrar startMessage
+      // 1. Tiempo Start → primera respuesta (inbound o siguiente outbound del funnel)
       let startMsg = null
       let startIdx = null
       for (let i = 0; i < messages.length; i++) {
@@ -280,32 +301,57 @@ export default function Dashboard() {
         }
       }
 
-      if (!startMsg) return
+      if (startMsg) {
+        // Buscar siguiente inbound o second/final
+        for (let i = startIdx + 1; i < messages.length; i++) {
+          const msg = messages[i]
+          const tag = msg.message_tag
+          
+          // Si es inbound o es second/final (indica que hubo respuesta)
+          if (msg.direction === 'inbound' || TAG_CATEGORIES.second.includes(tag) || TAG_CATEGORIES.final.includes(tag)) {
+            const diff = differenceInMinutes(new Date(msg.created_at), new Date(startMsg.created_at))
+            if (diff > 0 && diff < 2880) {
+              startMessageTimes.push(diff)
+            }
+            break
+          }
+        }
+      }
 
-      // Encontrar siguiente secondMessage o finalMessage (indica cuándo pulsó botón)
-      let nextMsg = null
-      for (let i = startIdx + 1; i < messages.length; i++) {
-        const tag = messages[i].message_tag
-        if (TAG_CATEGORIES.second.includes(tag) || TAG_CATEGORIES.final.includes(tag)) {
-          nextMsg = messages[i]
+      // 2. Tiempo Second → Final
+      for (let i = 0; i < messages.length; i++) {
+        if (TAG_CATEGORIES.second.includes(messages[i].message_tag)) {
+          // Buscar siguiente final
+          for (let j = i + 1; j < messages.length; j++) {
+            if (TAG_CATEGORIES.final.includes(messages[j].message_tag)) {
+              const diff = differenceInMinutes(new Date(messages[j].created_at), new Date(messages[i].created_at))
+              if (diff > 0 && diff < 2880) {
+                otherMessageTimes.push(diff)
+              }
+              break
+            }
+          }
           break
         }
       }
 
-      if (!nextMsg) return
-
-      const diff = differenceInMinutes(
-        new Date(nextMsg.created_at),
-        new Date(startMsg.created_at)
-      )
-
-      // Solo contar si es razonable (< 48h)
-      if (diff > 0 && diff < 2880) {
-        startMessageTimes.push(diff)
+      // 3. Tiempo Final → Goodbye
+      for (let i = 0; i < messages.length; i++) {
+        if (TAG_CATEGORIES.final.includes(messages[i].message_tag)) {
+          // Buscar siguiente goodbye
+          for (let j = i + 1; j < messages.length; j++) {
+            if (goodbyeTags.includes(messages[j].message_tag)) {
+              const diff = differenceInMinutes(new Date(messages[j].created_at), new Date(messages[i].created_at))
+              if (diff > 0 && diff < 2880) {
+                otherMessageTimes.push(diff)
+              }
+              break
+            }
+          }
+          break
+        }
       }
     })
-
-    console.log('Tiempos de respuesta encontrados:', startMessageTimes.length)
 
     const formatTime = (times) => {
       if (times.length === 0) return null
@@ -329,6 +375,7 @@ export default function Dashboard() {
 
     return {
       startMessages: formatTime(startMessageTimes),
+      otherMessages: formatTime(otherMessageTimes),
     }
   }, [data])
 
@@ -488,18 +535,15 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-            AURA IG Conversations Dashboard
+    <div className="h-screen bg-slate-900 text-white flex flex-col">
+      {/* Header fijo */}
+      <div className="flex-shrink-0 bg-slate-900 border-b border-slate-700 px-6 py-4">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent mb-4">
+            AURA Instagram Conversations Dashboard
           </h1>
-          <p className="text-slate-400 mt-1">Análisis de mensajes y conversiones</p>
-        </div>
 
-        {/* Filtros globales */}
-        <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
+          {/* Filtros globales */}
           <div className="flex flex-wrap gap-4 items-end">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Fecha inicio</label>
@@ -507,7 +551,7 @@ export default function Dashboard() {
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm"
               />
             </div>
             <div>
@@ -516,7 +560,7 @@ export default function Dashboard() {
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm"
               />
             </div>
             <div>
@@ -524,7 +568,7 @@ export default function Dashboard() {
               <select
                 value={groupBy}
                 onChange={(e) => setGroupBy(e.target.value)}
-                className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm"
               >
                 <option value="day">Día</option>
                 <option value="week">Semana</option>
@@ -534,57 +578,65 @@ export default function Dashboard() {
             <button
               onClick={fetchData}
               disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed px-6 py-2 rounded-lg font-medium transition"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed px-4 py-1.5 rounded-lg font-medium transition text-sm"
             >
               {loading ? 'Cargando...' : 'Actualizar'}
             </button>
-          </div>
-          {totalRecords > 0 && (
-            <p className="text-slate-500 text-sm mt-3">
-              {totalRecords.toLocaleString()} registros cargados ({startDate} → {endDate})
-            </p>
-          )}
-        </div>
-
-        {error && (
-          <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-6">
-            <p className="text-red-300">Error: {error}</p>
-          </div>
-        )}
-
-        {/* Tarjetas KPI */}
-        <div className="grid grid-cols-4 gap-6 mb-6">
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-2">Tiempo Medio de Respuesta</p>
-            <p className="text-4xl font-bold text-amber-400">
-              {responseTimeStats.startMessages ? responseTimeStats.startMessages.formatted : 'N/A'}
-            </p>
-            {responseTimeStats.startMessages && (
-              <p className="text-slate-500 text-sm mt-2">
-                {responseTimeStats.startMessages.sampleSize.toLocaleString()} conversiones
-              </p>
+            {totalRecords > 0 && (
+              <span className="text-slate-500 text-sm">
+                {totalRecords.toLocaleString()} registros
+              </span>
             )}
           </div>
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-2">Tiempo Mediano de Respuesta</p>
-            <p className="text-4xl font-bold text-orange-400">
-              {responseTimeStats.startMessages ? responseTimeStats.startMessages.medianFormatted : 'N/A'}
-            </p>
-            <p className="text-slate-500 text-sm mt-2">50% responde más rápido</p>
-          </div>
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-2">Total Mensajes</p>
-            <p className="text-4xl font-bold text-blue-400">{data.length.toLocaleString()}</p>
-            <p className="text-slate-500 text-sm mt-2">En el período seleccionado</p>
-          </div>
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-2">Leads Creados</p>
-            <p className="text-4xl font-bold text-emerald-400">
-              {data.filter((m) => m.message_tag === 'goodByeMessage_afterLeadCreated').length}
-            </p>
-            <p className="text-slate-500 text-sm mt-2">En el período seleccionado</p>
-          </div>
         </div>
+      </div>
+
+      {/* Contenido con scroll */}
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="max-w-7xl mx-auto">
+          {error && (
+            <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-6">
+              <p className="text-red-300">Error: {error}</p>
+            </div>
+          )}
+
+          {/* Tarjetas KPI */}
+          <div className="grid grid-cols-4 gap-4 mb-6">
+            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+              <p className="text-slate-400 text-sm mb-1">Respuesta Start Messages</p>
+              <p className="text-3xl font-bold text-amber-400">
+                {responseTimeStats.startMessages ? responseTimeStats.startMessages.formatted : 'N/A'}
+              </p>
+              {responseTimeStats.startMessages && (
+                <p className="text-slate-500 text-xs mt-1">
+                  Mediana: {responseTimeStats.startMessages.medianFormatted} • {responseTimeStats.startMessages.sampleSize} resp.
+                </p>
+              )}
+            </div>
+            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+              <p className="text-slate-400 text-sm mb-1">Respuesta Otros Mensajes</p>
+              <p className="text-3xl font-bold text-orange-400">
+                {responseTimeStats.otherMessages ? responseTimeStats.otherMessages.formatted : 'N/A'}
+              </p>
+              {responseTimeStats.otherMessages && (
+                <p className="text-slate-500 text-xs mt-1">
+                  Mediana: {responseTimeStats.otherMessages.medianFormatted} • {responseTimeStats.otherMessages.sampleSize} resp.
+                </p>
+              )}
+            </div>
+            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+              <p className="text-slate-400 text-sm mb-1">Total Mensajes</p>
+              <p className="text-3xl font-bold text-blue-400">{data.length.toLocaleString()}</p>
+              <p className="text-slate-500 text-xs mt-1">En el período seleccionado</p>
+            </div>
+            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+              <p className="text-slate-400 text-sm mb-1">Leads Creados</p>
+              <p className="text-3xl font-bold text-emerald-400">
+                {data.filter((m) => m.message_tag === 'goodByeMessage_afterLeadCreated').length}
+              </p>
+              <p className="text-slate-500 text-xs mt-1">En el período seleccionado</p>
+            </div>
+          </div>
 
         {/* Gráfico de entregas (barras + línea) */}
         <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
@@ -736,7 +788,7 @@ export default function Dashboard() {
 
         {/* Selector de tags para conversión */}
         <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Tasa de Conversión (respuesta inmediata)</h2>
+          <h2 className="text-lg font-semibold mb-4">Tasa de Conversión</h2>
 
           {/* Selector de categoría */}
           <div className="mb-4">
@@ -762,7 +814,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
             {/* Tarjeta total de la categoría */}
             <div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600">
-              <p className="text-slate-400 text-xs mb-1">Total {CONVERSION_CATEGORY_LABELS[conversionCategory]}</p>
+              <p className="text-slate-400 text-xs mb-1">Total</p>
               <p className="text-2xl font-bold text-white">
                 {conversionStats.categoryTotal.rate}%
               </p>
@@ -775,6 +827,7 @@ export default function Dashboard() {
             {CONVERSION_TAGS[conversionCategory].map((tag) => {
               const stats = conversionStats.byTag[tag] || { sent: 0, converted: 0, rate: 0 }
               const isSelected = selectedTags.includes(tag)
+              const letter = tag.slice(-1) // Obtener la letra (A, B, C, D, E)
               return (
                 <div 
                   key={tag}
@@ -785,9 +838,7 @@ export default function Dashboard() {
                       : 'bg-slate-700/30 border-slate-600 hover:border-slate-500'
                   }`}
                 >
-                  <p className="text-slate-400 text-xs mb-1 truncate">
-                    {TAG_LABELS[tag]?.replace(/Start |Second |Final /g, '') || tag}
-                  </p>
+                  <p className="text-slate-400 text-xs mb-1">{letter}</p>
                   <p className={`text-2xl font-bold ${isSelected ? 'text-blue-400' : 'text-white'}`}>
                     {stats.rate}%
                   </p>
@@ -799,72 +850,116 @@ export default function Dashboard() {
             })}
           </div>
 
-          {/* Indicador de selección */}
-          <p className="text-sm text-slate-500 mb-4">
-            Haz clic en las tarjetas para mostrar/ocultar en el gráfico. 
-            Seleccionados: {selectedTags.length > 0 
-              ? selectedTags.map(t => TAG_LABELS[t]?.replace(/Start |Second |Final /g, '') || t).join(', ')
-              : 'Ninguno'
-            }
-          </p>
-
-          {/* Gráfico de conversión */}
-          {conversionStats.chartData.length > 0 && selectedTags.length > 0 ? (
-            <ResponsiveContainer width="100%" height={350}>
-              <LineChart data={conversionStats.chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis
-                  dataKey="label"
-                  stroke="#94a3b8"
-                  tick={{ fill: '#94a3b8', fontSize: 11 }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={60}
-                />
-                <YAxis
-                  stroke="#94a3b8"
-                  tick={{ fill: '#94a3b8' }}
-                  domain={[0, 100]}
-                  tickFormatter={(v) => `${v}%`}
-                  label={{
-                    value: 'Tasa de respuesta %',
-                    angle: -90,
-                    position: 'insideLeft',
-                    fill: '#94a3b8',
-                  }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#f1f5f9' }}
-                  formatter={(value) => (value !== null ? `${value}%` : 'Sin datos')}
-                />
-                <Legend />
-                {selectedTags.map((tag, idx) => (
-                  <Line
-                    key={tag}
-                    type="monotone"
-                    dataKey={tag}
-                    name={TAG_LABELS[tag] || tag}
-                    stroke={TAG_COLORS[idx % TAG_COLORS.length]}
-                    strokeWidth={2}
-                    dot={{ fill: TAG_COLORS[idx % TAG_COLORS.length], strokeWidth: 2, r: 4 }}
-                    connectNulls
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-slate-500">
-              Selecciona al menos un mensaje para ver la conversión
+          {/* Layout: Gráfico 75% + iPhone 25% */}
+          <div className="flex gap-4">
+            {/* Gráfico de conversión - 75% */}
+            <div className="w-3/4">
+              {conversionStats.chartData.length > 0 && selectedTags.length > 0 ? (
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart data={conversionStats.chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis
+                      dataKey="label"
+                      stroke="#94a3b8"
+                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={60}
+                    />
+                    <YAxis
+                      stroke="#94a3b8"
+                      tick={{ fill: '#94a3b8' }}
+                      domain={[0, 100]}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1e293b',
+                        border: '1px solid #334155',
+                        borderRadius: '8px',
+                      }}
+                      labelStyle={{ color: '#f1f5f9' }}
+                      formatter={(value) => (value !== null ? `${value}%` : 'Sin datos')}
+                    />
+                    <Legend />
+                    {selectedTags.map((tag, idx) => (
+                      <Line
+                        key={tag}
+                        type="monotone"
+                        dataKey={tag}
+                        name={TAG_LABELS[tag] || tag}
+                        stroke={TAG_COLORS[idx % TAG_COLORS.length]}
+                        strokeWidth={2}
+                        dot={{ fill: TAG_COLORS[idx % TAG_COLORS.length], strokeWidth: 2, r: 4 }}
+                        connectNulls
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[350px] flex items-center justify-center text-slate-500">
+                  Selecciona al menos un mensaje para ver la conversión
+                </div>
+              )}
             </div>
-          )}
+
+            {/* iPhone Mockup - 25% */}
+            <div className="w-1/4 flex items-center justify-center">
+              <div className="relative">
+                {/* iPhone Frame */}
+                <div className="w-48 h-96 bg-black rounded-[2.5rem] p-2 shadow-xl border-4 border-slate-600">
+                  {/* Screen */}
+                  <div className="w-full h-full bg-slate-100 rounded-[2rem] overflow-hidden flex flex-col">
+                    {/* Status bar */}
+                    <div className="bg-white px-4 py-2 flex items-center justify-between border-b border-slate-200">
+                      <div className="w-16 h-1 bg-black rounded-full mx-auto" />
+                    </div>
+                    
+                    {/* Instagram header */}
+                    <div className="bg-white px-3 py-2 flex items-center gap-2 border-b border-slate-200">
+                      <div className="w-8 h-8 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 rounded-full flex items-center justify-center">
+                        <span className="text-white text-xs font-bold">A</span>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-black">aura_proptech</p>
+                        <p className="text-[10px] text-slate-500">Activo ahora</p>
+                      </div>
+                    </div>
+                    
+                    {/* Chat area */}
+                    <div className="flex-1 bg-white p-2 overflow-hidden">
+                      {selectedTags.length > 0 && MESSAGE_TEXTS[selectedTags[0]] ? (
+                        <div className="bg-slate-200 rounded-2xl rounded-bl-sm p-2.5 max-w-full">
+                          <p className="text-[10px] text-black leading-tight">
+                            {MESSAGE_TEXTS[selectedTags[0]]}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="h-full flex items-center justify-center">
+                          <p className="text-[10px] text-slate-400 text-center">
+                            Selecciona un mensaje para ver su contenido
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Input area */}
+                    <div className="bg-white px-2 py-2 border-t border-slate-200">
+                      <div className="bg-slate-100 rounded-full px-3 py-1.5">
+                        <p className="text-[10px] text-slate-400">Mensaje...</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Notch */}
+                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 w-20 h-5 bg-black rounded-full" />
+              </div>
+            </div>
+          </div>
 
           <p className="text-slate-500 text-xs mt-3">
-            * Conversión = % de mensajes outbound donde el siguiente mensaje es un inbound (respuesta del usuario)
+            Haz clic en las tarjetas para mostrar/ocultar en el gráfico y ver el mensaje en el móvil
           </p>
         </div>
 
