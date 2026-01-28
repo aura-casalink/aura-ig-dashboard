@@ -22,7 +22,7 @@ import {
 import { es } from 'date-fns/locale'
 import { supabase } from '../lib/supabase'
 
-// ConfiguraciÃ³n de tags por categorÃ­a
+// Configuración de tags por categoría
 const TAG_CATEGORIES = {
   start: [
     'startMessage_A',
@@ -48,7 +48,7 @@ const TAG_CATEGORIES = {
   lead: ['goodByeMessage_afterLeadCreated'],
 }
 
-// Tags para el selector de conversiÃ³n (sin follow-ups ni mensajes de cierre)
+// Tags para el selector de conversión (sin follow-ups ni mensajes de cierre)
 const CONVERSION_TAGS = {
   start: [
     'startMessage_A',
@@ -79,27 +79,27 @@ const CONVERSION_CATEGORY_LABELS = {
 
 // Textos completos de los mensajes para el mockup
 const MESSAGE_TEXTS = {
-  startMessage_A: "Hey ya estoy aquÃ­, muchas gracias por seguirnos! quiero preguntarte algo, Â¿Nos empezaste a seguir por el contenido o te gustarÃ­a que te cuente cÃ³mo trabajamos para encontrar viviendas con mejor calidad-precio usando IA?",
+  startMessage_A: "Hey ya estoy aquí, muchas gracias por seguirnos! quiero preguntarte algo, ¿Nos empezaste a seguir por el contenido o te gustaría que te cuente cómo trabajamos para encontrar viviendas con mejor calidad-precio usando IA?",
   startMessage_B: "Hola, te interesa saber mas sobre nuestra IA?",
   startMessage_C: "Gracias por el follow, quieres que nuestra IA te encuentre casa?",
   startMessage_D: "Nuestra IA solo esta disponible para gente que quiere una casa, es tu caso?",
   startMessage_E: "Nuestra IA solo esta disponible para gente que quiere comprar y vender, cual es tu caso?",
-  secondMessage_A: "Hey, soy Jorge muchas gracias por seguirnos. Te gustarÃ­a que te cuente cÃ³mo trabajamos para encontrar viviendas con mejor calidad-precio usando IA?",
-  secondMessage_B: "Hola soy Jorge muchas gracias por seguirnos! Te gustarÃ­a que te cuente cÃ³mo trabajamos para encontrar viviendas con mejor calidad-precio usando IA?",
-  secondMessage_C: "SÃºper, antes de contarte como trabajamos, damos servicio en toda EspaÃ±a, pero solo en compra, no en alquiler. Â¿TÃº estÃ¡s comprando?",
-  secondMessage_D: "Hey, soy Jorge muchas gracias por seguirnos. Te gustarÃ­a que te cuente cÃ³mo te podemos ayudar a comprar casa con mejor calidad-precio usando IA?",
-  finalMessage_A: "Perfecto, te explico como trabajamos muy rÃ¡pido. Lo que habrÃ¡s comprobado es que ahora mismo encontrar buenas oportunidades de vivienda es muy difÃ­cil. Por eso creamos una IA que busca por todo internet y te manda solo las mejores opciones.",
-  finalMessage_B: "Perfecto, te lo explico rÃ¡pido. Como habras visto ahora mismo encontrar buenas oportunidades es complicado, por eso usamos una IA que busca por todo internet y te envÃ­a solo las mejores opciones. Si alguna encaja, nos encargamos tambiÃ©n de negociar el precio y de todo el proceso. Es un servicio llevado por un equipo profesional apoyado en IA, asÃ­ que me gustarÃ­a conocer tu caso para ver si encaja. Si te interesa, dÃ©jame tu nÃºmero y seguimos por WhatsApp. Â¡Gracias!",
-  finalMessage_C: "ðŸŽ§ Audio: ExplicaciÃ³n para compradores",
-  finalMessage_D: "ðŸŽ§ Audio: ExplicaciÃ³n para vendedores",
+  secondMessage_A: "Hey, soy Jorge muchas gracias por seguirnos. Te gustaría que te cuente cómo trabajamos para encontrar viviendas con mejor calidad-precio usando IA?",
+  secondMessage_B: "Hola soy Jorge muchas gracias por seguirnos! Te gustaría que te cuente cómo trabajamos para encontrar viviendas con mejor calidad-precio usando IA?",
+  secondMessage_C: "Súper, antes de contarte como trabajamos, damos servicio en toda España, pero solo en compra, no en alquiler. ¿Tú estás comprando?",
+  secondMessage_D: "Hey, soy Jorge muchas gracias por seguirnos. Te gustaría que te cuente cómo te podemos ayudar a comprar casa con mejor calidad-precio usando IA?",
+  finalMessage_A: "Perfecto, te explico como trabajamos muy rápido. Lo que habrás comprobado es que ahora mismo encontrar buenas oportunidades de vivienda es muy difícil. Por eso creamos una IA que busca por todo internet y te manda solo las mejores opciones.",
+  finalMessage_B: "Perfecto, te lo explico rápido. Como habras visto ahora mismo encontrar buenas oportunidades es complicado, por eso usamos una IA que busca por todo internet y te envía solo las mejores opciones. Si alguna encaja, nos encargamos también de negociar el precio y de todo el proceso. Es un servicio llevado por un equipo profesional apoyado en IA, así que me gustaría conocer tu caso para ver si encaja. Si te interesa, déjame tu número y seguimos por WhatsApp. ¡Gracias!",
+  finalMessage_C: "🎧 Audio: Explicación para compradores",
+  finalMessage_D: "🎧 Audio: Explicación para vendedores",
 }
 
-// Botones de respuesta rÃ¡pida para cada mensaje
+// Botones de respuesta rápida para cada mensaje
 const MESSAGE_BUTTONS = {
   startMessage_A: ["Por la IA", "Por el contenido"],
-  startMessage_B: ["SÃ­"],
-  startMessage_C: ["SÃ­"],
-  startMessage_D: ["SÃ­"],
+  startMessage_B: ["Sí"],
+  startMessage_C: ["Sí"],
+  startMessage_D: ["Sí"],
   startMessage_E: ["Comprar casa con IA", "Vender casa con IA"],
   secondMessage_A: [],
   secondMessage_B: [],
@@ -140,7 +140,7 @@ const TAG_LABELS = {
   goodByeMessage_afterLeadCreated: 'Lead Creado',
   goodByeMessage_afterJustContent: 'Solo Contenido',
   goodByeMessage_afterNotInterested: 'No Interesado',
-  phoneFollowUp: 'Pedir TelÃ©fono',
+  phoneFollowUp: 'Pedir Teléfono',
 }
 
 export default function Dashboard() {
@@ -157,7 +157,7 @@ export default function Dashboard() {
   const [visibleSeries, setVisibleSeries] = useState(['start', 'second', 'final', 'leads'])
   const [conversionCategory, setConversionCategory] = useState('start') // start, second, final
 
-  // Fetch data con paginaciÃ³n para superar el lÃ­mite de 1000
+  // Fetch data con paginación para superar el límite de 1000
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -211,7 +211,7 @@ export default function Dashboard() {
     fetchData()
   }, [fetchData])
 
-  // FunciÃ³n para agrupar por perÃ­odo
+  // Función para agrupar por período
   const getGroupKey = useCallback((dateStr) => {
     const date = parseISO(dateStr)
     switch (groupBy) {
@@ -239,7 +239,7 @@ export default function Dashboard() {
     }
   }, [groupBy])
 
-  // Procesamiento de datos para el grÃ¡fico de barras + lÃ­nea
+  // Procesamiento de datos para el gráfico de barras + línea
   const deliveriesData = useMemo(() => {
     const grouped = {}
 
@@ -278,8 +278,8 @@ export default function Dashboard() {
       }))
   }, [data, groupBy, getGroupKey, formatGroupLabel])
 
-  // CÃ¡lculo del tiempo medio de respuesta
-  // - Start: desde startMessage hasta el siguiente inbound (button_click = cuando pulsÃ³ el botÃ³n)
+  // Cálculo del tiempo medio de respuesta
+  // - Start: desde startMessage hasta el siguiente inbound (button_click = cuando pulsó el botón)
   // - Otros: desde secondMessage hasta finalMessage, desde finalMessage hasta goodbye
   const responseTimeStats = useMemo(() => {
     const messagesByUser = {}
@@ -303,7 +303,7 @@ export default function Dashboard() {
     const goodbyeTags = ['goodByeMessage_afterLeadCreated', 'goodByeMessage_afterJustContent', 'goodByeMessage_afterNotInterested']
 
     Object.values(messagesByUser).forEach((messages) => {
-      // 1. Tiempo Start â†’ Inbound (button_click = cuando pulsÃ³ el botÃ³n)
+      // 1. Tiempo Start â†’ Inbound (button_click = cuando pulsó el botón)
       for (let i = 0; i < messages.length; i++) {
         if (TAG_CATEGORIES.start.includes(messages[i].message_tag)) {
           const startMsg = messages[i]
@@ -384,8 +384,8 @@ export default function Dashboard() {
     }
   }, [data])
 
-  // CÃ¡lculo de tasa de conversiÃ³n por tag
-  // LÃ“GICA: Un mensaje se considera "convertido" si el siguiente mensaje es un inbound
+  // Cálculo de tasa de conversión por tag
+  // LOGICA: Un mensaje se considera "convertido" si el siguiente mensaje es un inbound
   const conversionStats = useMemo(() => {
     // Agrupar por ig_username
     const messagesByUser = {}
@@ -403,10 +403,10 @@ export default function Dashboard() {
       messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
     })
 
-    // Tags de la categorÃ­a seleccionada
+    // Tags de la categoría seleccionada
     const categoryTags = CONVERSION_TAGS[conversionCategory] || []
 
-    // Calcular stats para todos los tags de la categorÃ­a
+    // Calcular stats para todos los tags de la categoría
     const statsByTag = {}
     const conversionByTagAndPeriod = {}
 
@@ -457,13 +457,13 @@ export default function Dashboard() {
               }
             }
 
-            // Opción 2: ¿Hay inbound hasta 60 seg después del final? (cubre 95% de casos por latencia)
+            // Opción 2: ¿Hay inbound hasta 180 seg después del final? (cubre 99% de casos por latencia)
             if (!isConverted && finalIdx + 1 < messages.length) {
               const nextMsg = messages[finalIdx + 1]
               if (nextMsg.direction === 'inbound') {
                 const inboundTime = new Date(nextMsg.created_at)
                 const diffSeconds = (inboundTime - finalTime) / 1000
-                if (diffSeconds <= 60) {
+                if (diffSeconds <= 180) {
                   isConverted = true
                 }
               }
@@ -494,7 +494,7 @@ export default function Dashboard() {
       })
     })
 
-    // Calcular totales de la categorÃ­a
+    // Calcular totales de la categoría
     const categoryTotal = {
       sent: Object.values(statsByTag).reduce((sum, s) => sum + s.sent, 0),
       converted: Object.values(statsByTag).reduce((sum, s) => sum + s.converted, 0),
@@ -509,7 +509,7 @@ export default function Dashboard() {
       s.rate = s.sent > 0 ? Math.round((s.converted / s.sent) * 1000) / 10 : 0
     })
 
-    // Convertir a formato de grÃ¡fico (solo para tags seleccionados)
+    // Convertir a formato de gráfico (solo para tags seleccionados)
     const allPeriods = new Set()
     selectedTags.forEach((tag) => {
       if (conversionByTagAndPeriod[tag]) {
@@ -544,10 +544,10 @@ export default function Dashboard() {
     }
   }, [data, conversionCategory, selectedTags, groupBy, getGroupKey, formatGroupLabel])
 
-  // Actualizar selectedTags cuando cambia la categorÃ­a
+  // Actualizar selectedTags cuando cambia la categoría
   const handleCategoryChange = (category) => {
     setConversionCategory(category)
-    // Seleccionar los primeros 2 tags de la nueva categorÃ­a por defecto
+    // Seleccionar los primeros 2 tags de la nueva categoría por defecto
     const newTags = CONVERSION_TAGS[category] || []
     setSelectedTags(newTags.slice(0, 2))
   }
@@ -565,7 +565,7 @@ export default function Dashboard() {
   ]
 
   const handleTagToggle = (tag) => {
-    // Solo permitir tags de la categorÃ­a actual
+    // Solo permitir tags de la categoría actual
     const categoryTags = CONVERSION_TAGS[conversionCategory] || []
     if (!categoryTags.includes(tag)) return
     
@@ -631,7 +631,7 @@ export default function Dashboard() {
                 onChange={(e) => setGroupBy(e.target.value)}
                 className="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm"
               >
-                <option value="day">DÃ­a</option>
+                <option value="day">Día</option>
                 <option value="week">Semana</option>
                 <option value="month">Mes</option>
               </select>
@@ -688,23 +688,23 @@ export default function Dashboard() {
             <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
               <p className="text-slate-400 text-sm mb-1">Total Mensajes</p>
               <p className="text-3xl font-bold text-blue-400">{data.length.toLocaleString()}</p>
-              <p className="text-slate-500 text-xs mt-1">En el perÃ­odo seleccionado</p>
+              <p className="text-slate-500 text-xs mt-1">En el período seleccionado</p>
             </div>
             <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
               <p className="text-slate-400 text-sm mb-1">Leads Creados</p>
               <p className="text-3xl font-bold text-emerald-400">
                 {data.filter((m) => m.message_tag === 'goodByeMessage_afterLeadCreated').length}
               </p>
-              <p className="text-slate-500 text-xs mt-1">En el perÃ­odo seleccionado</p>
+              <p className="text-slate-500 text-xs mt-1">En el período seleccionado</p>
             </div>
           </div>
 
-        {/* GrÃ¡fico de entregas (barras + lÃ­nea) */}
+        {/* Gráfico de entregas (barras + línea) */}
         <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
           <div className="flex justify-between items-start mb-4">
             <h2 className="text-lg font-semibold">
               Entregas de Mensajes y Leads por{' '}
-              {groupBy === 'day' ? 'DÃ­a' : groupBy === 'week' ? 'Semana' : 'Mes'}
+              {groupBy === 'day' ? 'Día' : groupBy === 'week' ? 'Semana' : 'Mes'}
             </h2>
             <div className="flex gap-2">
               {Object.entries(SERIES_CONFIG).map(([key, config]) => (
@@ -842,16 +842,16 @@ export default function Dashboard() {
             </ResponsiveContainer>
           ) : (
             <div className="h-64 flex items-center justify-center text-slate-500">
-              No hay datos con message_tag en el perÃ­odo seleccionado
+              No hay datos con message_tag en el período seleccionado
             </div>
           )}
         </div>
 
-        {/* Selector de tags para conversiÃ³n */}
+        {/* Selector de tags para conversión */}
         <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Tasa de ConversiÃ³n</h2>
+          <h2 className="text-lg font-semibold mb-4">Tasa de Conversión</h2>
 
-          {/* Selector de categorÃ­a */}
+          {/* Selector de categoría */}
           <div className="mb-4">
             <p className="text-sm text-slate-400 mb-2">Tipo de mensaje:</p>
             <div className="flex gap-2">
@@ -871,9 +871,9 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Tarjetas de resumen por categorÃ­a */}
+          {/* Tarjetas de resumen por categoría */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-            {/* Tarjeta total de la categorÃ­a */}
+            {/* Tarjeta total de la categoría */}
             <div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600">
               <p className="text-slate-400 text-xs mb-1">Total</p>
               <p className="text-2xl font-bold text-white">
@@ -911,9 +911,9 @@ export default function Dashboard() {
             })}
           </div>
 
-          {/* Layout: GrÃ¡fico 75% + iPhone 25% */}
+          {/* Layout: Gráfico 75% + iPhone 25% */}
           <div className="flex gap-4">
-            {/* GrÃ¡fico de conversiÃ³n - 75% */}
+            {/* Gráfico de conversión - 75% */}
             <div className="w-3/4">
               {conversionStats.chartData.length > 0 && selectedTags.length > 0 ? (
                 <ResponsiveContainer width="100%" height={350}>
@@ -959,7 +959,7 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               ) : (
                 <div className="h-[350px] flex items-center justify-center text-slate-500">
-                  Selecciona al menos un mensaje para ver la conversiÃ³n
+                  Selecciona al menos un mensaje para ver la conversión
                 </div>
               )}
             </div>
@@ -1004,7 +1004,7 @@ export default function Dashboard() {
                       )}
                     </div>
                     
-                    {/* Botones de respuesta rÃ¡pida */}
+                    {/* Botones de respuesta rápida */}
                     {selectedTags.length > 0 && MESSAGE_BUTTONS[selectedTags[0]]?.length > 0 && (
                       <div className="bg-white px-2 py-1.5 border-t border-slate-200 flex flex-wrap gap-1 justify-end">
                         {MESSAGE_BUTTONS[selectedTags[0]].map((btn, idx) => (
@@ -1034,7 +1034,7 @@ export default function Dashboard() {
           </div>
 
           <p className="text-slate-500 text-xs mt-3">
-            Haz clic en las tarjetas para mostrar/ocultar en el grÃ¡fico y ver el mensaje en el mÃ³vil
+            Haz clic en las tarjetas para mostrar/ocultar en el gráfico y ver el mensaje en el móvil
           </p>
         </div>
 
