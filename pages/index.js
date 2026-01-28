@@ -220,7 +220,7 @@ export default function Dashboard() {
 
   // Cálculo del tiempo medio de respuesta (separado por tipo)
   const responseTimeStats = useMemo(() => {
-    // Agrupar SOLO por ig_username (conversation_link es diferente para inbound/outbound)
+    // Agrupar SOLO por ig_username
     const messagesByUser = {}
 
     data.forEach((msg) => {
@@ -252,8 +252,8 @@ export default function Dashboard() {
                 new Date(messages[j].created_at),
                 new Date(messages[i].created_at)
               )
-              // Solo contar si es razonable (menos de 48h)
-              if (diff > 0 && diff < 2880) {
+              // Solo contar si es > 1 min (excluir sintéticos) y < 48h
+              if (diff > 1 && diff < 2880) {
                 if (TAG_CATEGORIES.start.includes(messages[i].message_tag)) {
                   startMessageTimes.push(diff)
                 } else {
@@ -269,8 +269,8 @@ export default function Dashboard() {
       }
     })
 
-    console.log('Tiempos start encontrados:', startMessageTimes.length)
-    console.log('Tiempos otros encontrados:', otherMessageTimes.length)
+    console.log('Tiempos start encontrados (>1min):', startMessageTimes.length)
+    console.log('Tiempos otros encontrados (>1min):', otherMessageTimes.length)
 
     const formatTime = (times) => {
       if (times.length === 0) return null
@@ -291,8 +291,9 @@ export default function Dashboard() {
   }, [data])
 
   // Cálculo de tasa de conversión por tag
+  // LÓGICA: Un mensaje se considera "convertido" si el siguiente mensaje es un inbound
   const conversionData = useMemo(() => {
-    // Agrupar SOLO por ig_username
+    // Agrupar por ig_username
     const messagesByUser = {}
 
     data.forEach((msg) => {
@@ -303,12 +304,12 @@ export default function Dashboard() {
       messagesByUser[msg.ig_username].push(msg)
     })
 
-    console.log('Usuarios únicos para conversión:', Object.keys(messagesByUser).length)
-
-    // Ordenar mensajes por usuario
+    // Ordenar mensajes por fecha
     Object.values(messagesByUser).forEach((messages) => {
       messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
     })
+
+    console.log('Usuarios únicos para conversión:', Object.keys(messagesByUser).length)
 
     // Para cada tag seleccionado, calcular conversión por período
     const conversionByTagAndPeriod = {}
@@ -316,9 +317,10 @@ export default function Dashboard() {
 
     selectedTags.forEach((tag) => {
       conversionByTagAndPeriod[tag] = {}
-      debugStats[tag] = { totalSent: 0, totalReplied: 0 }
+      debugStats[tag] = { totalSent: 0, totalConverted: 0 }
     })
 
+    // Para cada usuario, verificar si el mensaje seleccionado tiene un inbound inmediatamente después
     Object.values(messagesByUser).forEach((messages) => {
       messages.forEach((msg, idx) => {
         if (msg.direction !== 'outbound' || !selectedTags.includes(msg.message_tag)) return
@@ -326,27 +328,22 @@ export default function Dashboard() {
         const period = getGroupKey(msg.created_at)
 
         if (!conversionByTagAndPeriod[msg.message_tag][period]) {
-          conversionByTagAndPeriod[msg.message_tag][period] = { sent: 0, replied: 0 }
+          conversionByTagAndPeriod[msg.message_tag][period] = { sent: 0, converted: 0 }
         }
 
         conversionByTagAndPeriod[msg.message_tag][period].sent++
         debugStats[msg.message_tag].totalSent++
 
-        // Verificar si hay un inbound después
-        for (let j = idx + 1; j < messages.length; j++) {
-          if (messages[j].direction === 'inbound') {
-            conversionByTagAndPeriod[msg.message_tag][period].replied++
-            debugStats[msg.message_tag].totalReplied++
-            break
-          }
-          // Si hay otro outbound antes de un inbound, no contar como respuesta
-          if (messages[j].direction === 'outbound') break
+        // ¿El siguiente mensaje es un inbound?
+        if (idx + 1 < messages.length && messages[idx + 1].direction === 'inbound') {
+          conversionByTagAndPeriod[msg.message_tag][period].converted++
+          debugStats[msg.message_tag].totalConverted++
         }
       })
     })
 
     // Debug: mostrar stats por tag
-    console.log('Conversion debug stats:', debugStats)
+    console.log('Conversion debug stats (inbound inmediato):', debugStats)
 
     // Convertir a formato de gráfico
     const allPeriods = new Set()
@@ -365,7 +362,7 @@ export default function Dashboard() {
       selectedTags.forEach((tag) => {
         const tagData = conversionByTagAndPeriod[tag][period]
         if (tagData && tagData.sent > 0) {
-          row[tag] = Math.round((tagData.replied / tagData.sent) * 100)
+          row[tag] = Math.round((tagData.converted / tagData.sent) * 100)
         } else {
           row[tag] = null
         }
@@ -482,24 +479,24 @@ export default function Dashboard() {
         {/* Tarjetas KPI */}
         <div className="grid grid-cols-4 gap-6 mb-6">
           <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-2">Respuesta a Start Messages</p>
+            <p className="text-slate-400 text-sm mb-2">Tiempo Respuesta Start</p>
             <p className="text-4xl font-bold text-amber-400">
               {responseTimeStats.startMessages ? responseTimeStats.startMessages.formatted : 'N/A'}
             </p>
             {responseTimeStats.startMessages && (
               <p className="text-slate-500 text-sm mt-2">
-                {responseTimeStats.startMessages.sampleSize.toLocaleString()} respuestas
+                {responseTimeStats.startMessages.sampleSize.toLocaleString()} respuestas reales
               </p>
             )}
           </div>
           <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-2">Respuesta a Otros Mensajes</p>
+            <p className="text-slate-400 text-sm mb-2">Tiempo Respuesta Otros</p>
             <p className="text-4xl font-bold text-orange-400">
               {responseTimeStats.otherMessages ? responseTimeStats.otherMessages.formatted : 'N/A'}
             </p>
             {responseTimeStats.otherMessages && (
               <p className="text-slate-500 text-sm mt-2">
-                {responseTimeStats.otherMessages.sampleSize.toLocaleString()} respuestas
+                {responseTimeStats.otherMessages.sampleSize.toLocaleString()} respuestas reales
               </p>
             )}
           </div>
@@ -667,9 +664,9 @@ export default function Dashboard() {
 
         {/* Selector de tags para conversión */}
         <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Tasa de Conversión por Tipo de Mensaje</h2>
+          <h2 className="text-lg font-semibold mb-4">Tasa de Conversión (respuesta inmediata)</h2>
 
-          {/* Tag selector */}
+          {/* Tag selector - cualquier tag outbound para conversión */}
           <div className="mb-4">
             <p className="text-sm text-slate-400 mb-2">Selecciona los mensajes a comparar:</p>
             <div className="flex flex-wrap gap-2">
@@ -750,8 +747,7 @@ export default function Dashboard() {
           )}
 
           <p className="text-slate-500 text-xs mt-3">
-            * La tasa de conversión mide el % de mensajes outbound que recibieron una respuesta
-            inbound del usuario
+            * Conversión = % de mensajes outbound donde el siguiente mensaje es un inbound (respuesta del usuario)
           </p>
         </div>
 
