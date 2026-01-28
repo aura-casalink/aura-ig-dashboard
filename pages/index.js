@@ -218,9 +218,9 @@ export default function Dashboard() {
       }))
   }, [data, groupBy, getGroupKey, formatGroupLabel])
 
-  // Cálculo del tiempo medio de respuesta (separado por tipo)
+  // Cálculo del tiempo medio de respuesta
+  // LÓGICA: Tiempo desde startMessage hasta secondMessage/finalMessage (cuando pulsó el botón)
   const responseTimeStats = useMemo(() => {
-    // Agrupar SOLO por ig_username
     const messagesByUser = {}
 
     data.forEach((msg) => {
@@ -231,62 +231,74 @@ export default function Dashboard() {
       messagesByUser[msg.ig_username].push(msg)
     })
 
-    // Debug
-    const usersWithBoth = Object.values(messagesByUser).filter(msgs => 
-      msgs.some(m => m.direction === 'outbound') && msgs.some(m => m.direction === 'inbound')
-    ).length
-    console.log('Usuarios con outbound E inbound:', usersWithBoth)
-
-    const startMessageTimes = []
-    const otherMessageTimes = []
-
+    // Ordenar por fecha
     Object.values(messagesByUser).forEach((messages) => {
       messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    })
 
-      for (let i = 0; i < messages.length - 1; i++) {
-        if (messages[i].direction === 'outbound' && messages[i].message_tag) {
-          // Buscar el primer inbound después
-          for (let j = i + 1; j < messages.length; j++) {
-            if (messages[j].direction === 'inbound') {
-              const diff = differenceInMinutes(
-                new Date(messages[j].created_at),
-                new Date(messages[i].created_at)
-              )
-              // Solo contar si es > 1 min (excluir sintéticos) y < 48h
-              if (diff > 1 && diff < 2880) {
-                if (TAG_CATEGORIES.start.includes(messages[i].message_tag)) {
-                  startMessageTimes.push(diff)
-                } else {
-                  otherMessageTimes.push(diff)
-                }
-              }
-              break
-            }
-            // Si hay otro outbound antes de un inbound, salir
-            if (messages[j].direction === 'outbound') break
-          }
+    const startMessageTimes = []
+
+    Object.values(messagesByUser).forEach((messages) => {
+      // Encontrar startMessage
+      let startMsg = null
+      let startIdx = null
+      for (let i = 0; i < messages.length; i++) {
+        if (TAG_CATEGORIES.start.includes(messages[i].message_tag)) {
+          startMsg = messages[i]
+          startIdx = i
+          break
         }
+      }
+
+      if (!startMsg) return
+
+      // Encontrar siguiente secondMessage o finalMessage (indica cuándo pulsó botón)
+      let nextMsg = null
+      for (let i = startIdx + 1; i < messages.length; i++) {
+        const tag = messages[i].message_tag
+        if (TAG_CATEGORIES.second.includes(tag) || TAG_CATEGORIES.final.includes(tag)) {
+          nextMsg = messages[i]
+          break
+        }
+      }
+
+      if (!nextMsg) return
+
+      const diff = differenceInMinutes(
+        new Date(nextMsg.created_at),
+        new Date(startMsg.created_at)
+      )
+
+      // Solo contar si es razonable (< 48h)
+      if (diff > 0 && diff < 2880) {
+        startMessageTimes.push(diff)
       }
     })
 
-    console.log('Tiempos start encontrados (>1min):', startMessageTimes.length)
-    console.log('Tiempos otros encontrados (>1min):', otherMessageTimes.length)
+    console.log('Tiempos de respuesta encontrados:', startMessageTimes.length)
 
     const formatTime = (times) => {
       if (times.length === 0) return null
       const avg = times.reduce((a, b) => a + b, 0) / times.length
-      const hours = Math.floor(avg / 60)
-      const minutes = Math.round(avg % 60)
+      const sorted = [...times].sort((a, b) => a - b)
+      const median = sorted[Math.floor(sorted.length / 2)]
+      
+      const formatMinutes = (mins) => {
+        const hours = Math.floor(mins / 60)
+        const minutes = Math.round(mins % 60)
+        return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
+      }
+      
       return {
         totalMinutes: Math.round(avg),
-        formatted: hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`,
+        formatted: formatMinutes(avg),
+        medianFormatted: formatMinutes(median),
         sampleSize: times.length,
       }
     }
 
     return {
       startMessages: formatTime(startMessageTimes),
-      otherMessages: formatTime(otherMessageTimes),
     }
   }, [data])
 
@@ -479,26 +491,22 @@ export default function Dashboard() {
         {/* Tarjetas KPI */}
         <div className="grid grid-cols-4 gap-6 mb-6">
           <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-2">Tiempo Respuesta Start</p>
+            <p className="text-slate-400 text-sm mb-2">Tiempo Medio de Respuesta</p>
             <p className="text-4xl font-bold text-amber-400">
               {responseTimeStats.startMessages ? responseTimeStats.startMessages.formatted : 'N/A'}
             </p>
             {responseTimeStats.startMessages && (
               <p className="text-slate-500 text-sm mt-2">
-                {responseTimeStats.startMessages.sampleSize.toLocaleString()} respuestas reales
+                {responseTimeStats.startMessages.sampleSize.toLocaleString()} conversiones
               </p>
             )}
           </div>
           <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-2">Tiempo Respuesta Otros</p>
+            <p className="text-slate-400 text-sm mb-2">Tiempo Mediano de Respuesta</p>
             <p className="text-4xl font-bold text-orange-400">
-              {responseTimeStats.otherMessages ? responseTimeStats.otherMessages.formatted : 'N/A'}
+              {responseTimeStats.startMessages ? responseTimeStats.startMessages.medianFormatted : 'N/A'}
             </p>
-            {responseTimeStats.otherMessages && (
-              <p className="text-slate-500 text-sm mt-2">
-                {responseTimeStats.otherMessages.sampleSize.toLocaleString()} respuestas reales
-              </p>
-            )}
+            <p className="text-slate-500 text-sm mt-2">50% responde más rápido</p>
           </div>
           <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
             <p className="text-slate-400 text-sm mb-2">Total Mensajes</p>
