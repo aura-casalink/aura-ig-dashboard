@@ -279,7 +279,7 @@ export default function Dashboard() {
   }, [data, groupBy, getGroupKey, formatGroupLabel])
 
   // Cálculo del tiempo medio de respuesta
-  // - Start: desde startMessage hasta secondMessage/finalMessage (el timestamp indica cuándo pulsó el botón)
+  // - Start: desde startMessage hasta el siguiente inbound (button_click = cuando pulsó el botón)
   // - Otros: desde secondMessage hasta finalMessage, desde finalMessage hasta goodbye
   const responseTimeStats = useMemo(() => {
     const messagesByUser = {}
@@ -303,16 +303,14 @@ export default function Dashboard() {
     const goodbyeTags = ['goodByeMessage_afterLeadCreated', 'goodByeMessage_afterJustContent', 'goodByeMessage_afterNotInterested']
 
     Object.values(messagesByUser).forEach((messages) => {
-      // 1. Tiempo Start → Second/Final (el timestamp del second/final indica cuándo pulsó el botón)
-      let startMsg = null
+      // 1. Tiempo Start → Inbound (button_click = cuando pulsó el botón)
       for (let i = 0; i < messages.length; i++) {
         if (TAG_CATEGORIES.start.includes(messages[i].message_tag)) {
-          startMsg = messages[i]
+          const startMsg = messages[i]
           
-          // Buscar siguiente secondMessage o finalMessage (NO inbound)
+          // Buscar siguiente inbound
           for (let j = i + 1; j < messages.length; j++) {
-            const tag = messages[j].message_tag
-            if (TAG_CATEGORIES.second.includes(tag) || TAG_CATEGORIES.final.includes(tag)) {
+            if (messages[j].direction === 'inbound') {
               const diff = differenceInMinutes(new Date(messages[j].created_at), new Date(startMsg.created_at))
               if (diff > 0 && diff < 2880) {
                 startMessageTimes.push(diff)
@@ -417,7 +415,7 @@ export default function Dashboard() {
       conversionByTagAndPeriod[tag] = {}
     })
 
-    // Para cada usuario, verificar si el mensaje tiene seguimiento en el funnel
+    // Para cada usuario, verificar si el mensaje tiene un inbound inmediatamente después
     Object.values(messagesByUser).forEach((messages) => {
       messages.forEach((msg, idx) => {
         if (msg.direction !== 'outbound' || !categoryTags.includes(msg.message_tag)) return
@@ -432,37 +430,8 @@ export default function Dashboard() {
         conversionByTagAndPeriod[tag][period].sent++
         statsByTag[tag].sent++
 
-        // Conversión = si hay un mensaje posterior del siguiente paso del funnel
-        // Start Messages → buscar secondMessage o finalMessage
-        // Second Messages → buscar finalMessage
-        // Final Messages → buscar goodByeMessage
-        let converted = false
-        
-        for (let i = idx + 1; i < messages.length; i++) {
-          const nextTag = messages[i].message_tag
-          
-          if (TAG_CATEGORIES.start.includes(tag)) {
-            // Start → Second o Final
-            if (TAG_CATEGORIES.second.includes(nextTag) || TAG_CATEGORIES.final.includes(nextTag)) {
-              converted = true
-              break
-            }
-          } else if (TAG_CATEGORIES.second.includes(tag)) {
-            // Second → Final
-            if (TAG_CATEGORIES.final.includes(nextTag)) {
-              converted = true
-              break
-            }
-          } else if (TAG_CATEGORIES.final.includes(tag)) {
-            // Final → GoodBye
-            if (nextTag && nextTag.startsWith('goodByeMessage_')) {
-              converted = true
-              break
-            }
-          }
-        }
-        
-        if (converted) {
+        // ¿El siguiente mensaje es un inbound?
+        if (idx + 1 < messages.length && messages[idx + 1].direction === 'inbound') {
           conversionByTagAndPeriod[tag][period].converted++
           statsByTag[tag].converted++
         }
