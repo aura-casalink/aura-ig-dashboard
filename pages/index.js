@@ -469,8 +469,19 @@ export default function Dashboard() {
               }
             }
           }
+        } else if (conversionCategory === 'final') {
+          // Lógica para finalMessages: el siguiente goodByeMessage es afterLeadCreated
+          for (let j = idx + 1; j < messages.length; j++) {
+            const nextTag = messages[j].message_tag
+            if (nextTag && nextTag.includes('goodByeMessage')) {
+              if (nextTag === 'goodByeMessage_afterLeadCreated') {
+                isConverted = true
+              }
+              break // Solo contar el primer goodByeMessage
+            }
+          }
         } else {
-          // Lógica original para start y final: siguiente mensaje es inbound
+          // Lógica para startMessages: siguiente mensaje es inbound
           if (idx + 1 < messages.length && messages[idx + 1].direction === 'inbound') {
             isConverted = true
           }
