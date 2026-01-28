@@ -94,6 +94,23 @@ const MESSAGE_TEXTS = {
   finalMessage_D: "🎧 Audio: Explicación para vendedores",
 }
 
+// Botones de respuesta rápida para cada mensaje
+const MESSAGE_BUTTONS = {
+  startMessage_A: ["Por la IA", "Por el contenido"],
+  startMessage_B: ["Sí"],
+  startMessage_C: ["Sí"],
+  startMessage_D: ["Sí"],
+  startMessage_E: ["Comprar casa con IA", "Vender casa con IA"],
+  secondMessage_A: ["Sí"],
+  secondMessage_B: ["Sí"],
+  secondMessage_C: ["Sí"],
+  secondMessage_D: ["Sí"],
+  finalMessage_A: [],
+  finalMessage_B: [],
+  finalMessage_C: [],
+  finalMessage_D: [],
+}
+
 const ALL_TAGS = [
   ...TAG_CATEGORIES.start,
   ...TAG_CATEGORIES.second,
@@ -266,8 +283,8 @@ export default function Dashboard() {
   }, [data, groupBy, getGroupKey, formatGroupLabel])
 
   // Cálculo del tiempo medio de respuesta
-  // - Start: desde startMessage hasta inbound/second/final (primera respuesta)
-  // - Otros: desde second hasta final, desde final hasta goodbye
+  // - Start: desde startMessage hasta secondMessage/finalMessage (el timestamp indica cuándo pulsó el botón)
+  // - Otros: desde secondMessage hasta finalMessage, desde finalMessage hasta goodbye
   const responseTimeStats = useMemo(() => {
     const messagesByUser = {}
 
@@ -290,38 +307,30 @@ export default function Dashboard() {
     const goodbyeTags = ['goodByeMessage_afterLeadCreated', 'goodByeMessage_afterJustContent', 'goodByeMessage_afterNotInterested']
 
     Object.values(messagesByUser).forEach((messages) => {
-      // 1. Tiempo Start → primera respuesta (inbound o siguiente outbound del funnel)
+      // 1. Tiempo Start → Second/Final (el timestamp del second/final indica cuándo pulsó el botón)
       let startMsg = null
-      let startIdx = null
       for (let i = 0; i < messages.length; i++) {
         if (TAG_CATEGORIES.start.includes(messages[i].message_tag)) {
           startMsg = messages[i]
-          startIdx = i
-          break
-        }
-      }
-
-      if (startMsg) {
-        // Buscar siguiente inbound o second/final
-        for (let i = startIdx + 1; i < messages.length; i++) {
-          const msg = messages[i]
-          const tag = msg.message_tag
           
-          // Si es inbound o es second/final (indica que hubo respuesta)
-          if (msg.direction === 'inbound' || TAG_CATEGORIES.second.includes(tag) || TAG_CATEGORIES.final.includes(tag)) {
-            const diff = differenceInMinutes(new Date(msg.created_at), new Date(startMsg.created_at))
-            if (diff > 0 && diff < 2880) {
-              startMessageTimes.push(diff)
+          // Buscar siguiente secondMessage o finalMessage (NO inbound)
+          for (let j = i + 1; j < messages.length; j++) {
+            const tag = messages[j].message_tag
+            if (TAG_CATEGORIES.second.includes(tag) || TAG_CATEGORIES.final.includes(tag)) {
+              const diff = differenceInMinutes(new Date(messages[j].created_at), new Date(startMsg.created_at))
+              if (diff > 0 && diff < 2880) {
+                startMessageTimes.push(diff)
+              }
+              break
             }
-            break
           }
+          break
         }
       }
 
       // 2. Tiempo Second → Final
       for (let i = 0; i < messages.length; i++) {
         if (TAG_CATEGORIES.second.includes(messages[i].message_tag)) {
-          // Buscar siguiente final
           for (let j = i + 1; j < messages.length; j++) {
             if (TAG_CATEGORIES.final.includes(messages[j].message_tag)) {
               const diff = differenceInMinutes(new Date(messages[j].created_at), new Date(messages[i].created_at))
@@ -338,7 +347,6 @@ export default function Dashboard() {
       // 3. Tiempo Final → Goodbye
       for (let i = 0; i < messages.length; i++) {
         if (TAG_CATEGORIES.final.includes(messages[i].message_tag)) {
-          // Buscar siguiente goodbye
           for (let j = i + 1; j < messages.length; j++) {
             if (goodbyeTags.includes(messages[j].message_tag)) {
               const diff = differenceInMinutes(new Date(messages[j].created_at), new Date(messages[i].created_at))
@@ -352,6 +360,9 @@ export default function Dashboard() {
         }
       }
     })
+
+    console.log('Start response times:', startMessageTimes.length)
+    console.log('Other response times:', otherMessageTimes.length)
 
     const formatTime = (times) => {
       if (times.length === 0) return null
@@ -917,17 +928,17 @@ export default function Dashboard() {
                     
                     {/* Instagram header */}
                     <div className="bg-white px-3 py-2 flex items-center gap-2 border-b border-slate-200">
-                      <div className="w-8 h-8 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 rounded-full flex items-center justify-center">
+                      <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
                         <span className="text-white text-xs font-bold">A</span>
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-black">aura_proptech</p>
+                        <p className="text-xs font-semibold text-black">aura.place_es</p>
                         <p className="text-[10px] text-slate-500">Activo ahora</p>
                       </div>
                     </div>
                     
-                    {/* Chat area */}
-                    <div className="flex-1 bg-white p-2 overflow-hidden">
+                    {/* Chat area con scroll */}
+                    <div className="flex-1 bg-white p-2 overflow-y-auto">
                       {selectedTags.length > 0 && MESSAGE_TEXTS[selectedTags[0]] ? (
                         <div className="bg-slate-200 rounded-2xl rounded-bl-sm p-2.5 max-w-full">
                           <p className="text-[10px] text-black leading-tight">
@@ -942,6 +953,20 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
+                    
+                    {/* Botones de respuesta rápida */}
+                    {selectedTags.length > 0 && MESSAGE_BUTTONS[selectedTags[0]]?.length > 0 && (
+                      <div className="bg-white px-2 py-1.5 border-t border-slate-200 flex flex-wrap gap-1 justify-end">
+                        {MESSAGE_BUTTONS[selectedTags[0]].map((btn, idx) => (
+                          <div 
+                            key={idx}
+                            className="bg-white border border-blue-500 rounded-full px-2 py-0.5"
+                          >
+                            <p className="text-[8px] text-blue-500 font-medium">{btn}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     
                     {/* Input area */}
                     <div className="bg-white px-2 py-2 border-t border-slate-200">
