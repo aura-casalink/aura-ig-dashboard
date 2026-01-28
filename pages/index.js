@@ -150,11 +150,7 @@ export default function Dashboard() {
   const [totalRecords, setTotalRecords] = useState(0)
 
   // Filtros
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 30)
-    return d.toISOString().split('T')[0]
-  })
+  const [startDate, setStartDate] = useState('2025-12-01')
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0])
   const [groupBy, setGroupBy] = useState('day') // day, week, month
   const [selectedTags, setSelectedTags] = useState(['startMessage_A', 'startMessage_B'])
@@ -421,7 +417,7 @@ export default function Dashboard() {
       conversionByTagAndPeriod[tag] = {}
     })
 
-    // Para cada usuario, verificar si el mensaje tiene un inbound inmediatamente después
+    // Para cada usuario, verificar si el mensaje tiene seguimiento en el funnel
     Object.values(messagesByUser).forEach((messages) => {
       messages.forEach((msg, idx) => {
         if (msg.direction !== 'outbound' || !categoryTags.includes(msg.message_tag)) return
@@ -436,8 +432,37 @@ export default function Dashboard() {
         conversionByTagAndPeriod[tag][period].sent++
         statsByTag[tag].sent++
 
-        // ¿El siguiente mensaje es un inbound?
-        if (idx + 1 < messages.length && messages[idx + 1].direction === 'inbound') {
+        // Conversión = si hay un mensaje posterior del siguiente paso del funnel
+        // Start Messages → buscar secondMessage o finalMessage
+        // Second Messages → buscar finalMessage
+        // Final Messages → buscar goodByeMessage
+        let converted = false
+        
+        for (let i = idx + 1; i < messages.length; i++) {
+          const nextTag = messages[i].message_tag
+          
+          if (TAG_CATEGORIES.start.includes(tag)) {
+            // Start → Second o Final
+            if (TAG_CATEGORIES.second.includes(nextTag) || TAG_CATEGORIES.final.includes(nextTag)) {
+              converted = true
+              break
+            }
+          } else if (TAG_CATEGORIES.second.includes(tag)) {
+            // Second → Final
+            if (TAG_CATEGORIES.final.includes(nextTag)) {
+              converted = true
+              break
+            }
+          } else if (TAG_CATEGORIES.final.includes(tag)) {
+            // Final → GoodBye
+            if (nextTag && nextTag.startsWith('goodByeMessage_')) {
+              converted = true
+              break
+            }
+          }
+        }
+        
+        if (converted) {
           conversionByTagAndPeriod[tag][period].converted++
           statsByTag[tag].converted++
         }
