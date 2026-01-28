@@ -48,6 +48,35 @@ const TAG_CATEGORIES = {
   lead: ['goodByeMessage_afterLeadCreated'],
 }
 
+// Tags para el selector de conversión (sin follow-ups ni mensajes de cierre)
+const CONVERSION_TAGS = {
+  start: [
+    'startMessage_A',
+    'startMessage_B',
+    'startMessage_C',
+    'startMessage_D',
+    'startMessage_E',
+  ],
+  second: [
+    'secondMessage_A',
+    'secondMessage_B',
+    'secondMessage_C',
+    'secondMessage_D',
+  ],
+  final: [
+    'finalMessage_A',
+    'finalMessage_B',
+    'finalMessage_C',
+    'finalMessage_D',
+  ],
+}
+
+const CONVERSION_CATEGORY_LABELS = {
+  start: 'Start Messages',
+  second: 'Second Messages',
+  final: 'Final Messages',
+}
+
 const ALL_TAGS = [
   ...TAG_CATEGORIES.start,
   ...TAG_CATEGORIES.second,
@@ -96,6 +125,7 @@ export default function Dashboard() {
   const [groupBy, setGroupBy] = useState('day') // day, week, month
   const [selectedTags, setSelectedTags] = useState(['startMessage_A', 'startMessage_B'])
   const [visibleSeries, setVisibleSeries] = useState(['start', 'second', 'final', 'leads'])
+  const [conversionCategory, setConversionCategory] = useState('start') // start, second, final
 
   // Fetch data con paginación para superar el límite de 1000
   const fetchData = useCallback(async () => {
@@ -304,7 +334,7 @@ export default function Dashboard() {
 
   // Cálculo de tasa de conversión por tag
   // LÓGICA: Un mensaje se considera "convertido" si el siguiente mensaje es un inbound
-  const conversionData = useMemo(() => {
+  const conversionStats = useMemo(() => {
     // Agrupar por ig_username
     const messagesByUser = {}
 
@@ -321,58 +351,74 @@ export default function Dashboard() {
       messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
     })
 
-    console.log('Usuarios únicos para conversión:', Object.keys(messagesByUser).length)
+    // Tags de la categoría seleccionada
+    const categoryTags = CONVERSION_TAGS[conversionCategory] || []
 
-    // Para cada tag seleccionado, calcular conversión por período
+    // Calcular stats para todos los tags de la categoría
+    const statsByTag = {}
     const conversionByTagAndPeriod = {}
-    const debugStats = {}
 
-    selectedTags.forEach((tag) => {
+    categoryTags.forEach((tag) => {
+      statsByTag[tag] = { sent: 0, converted: 0 }
       conversionByTagAndPeriod[tag] = {}
-      debugStats[tag] = { totalSent: 0, totalConverted: 0 }
     })
 
-    // Para cada usuario, verificar si el mensaje seleccionado tiene un inbound inmediatamente después
+    // Para cada usuario, verificar si el mensaje tiene un inbound inmediatamente después
     Object.values(messagesByUser).forEach((messages) => {
       messages.forEach((msg, idx) => {
-        if (msg.direction !== 'outbound' || !selectedTags.includes(msg.message_tag)) return
+        if (msg.direction !== 'outbound' || !categoryTags.includes(msg.message_tag)) return
 
+        const tag = msg.message_tag
         const period = getGroupKey(msg.created_at)
 
-        if (!conversionByTagAndPeriod[msg.message_tag][period]) {
-          conversionByTagAndPeriod[msg.message_tag][period] = { sent: 0, converted: 0 }
+        if (!conversionByTagAndPeriod[tag][period]) {
+          conversionByTagAndPeriod[tag][period] = { sent: 0, converted: 0 }
         }
 
-        conversionByTagAndPeriod[msg.message_tag][period].sent++
-        debugStats[msg.message_tag].totalSent++
+        conversionByTagAndPeriod[tag][period].sent++
+        statsByTag[tag].sent++
 
         // ¿El siguiente mensaje es un inbound?
         if (idx + 1 < messages.length && messages[idx + 1].direction === 'inbound') {
-          conversionByTagAndPeriod[msg.message_tag][period].converted++
-          debugStats[msg.message_tag].totalConverted++
+          conversionByTagAndPeriod[tag][period].converted++
+          statsByTag[tag].converted++
         }
       })
     })
 
-    // Debug: mostrar stats por tag
-    console.log('Conversion debug stats (inbound inmediato):', debugStats)
+    // Calcular totales de la categoría
+    const categoryTotal = {
+      sent: Object.values(statsByTag).reduce((sum, s) => sum + s.sent, 0),
+      converted: Object.values(statsByTag).reduce((sum, s) => sum + s.converted, 0),
+    }
+    categoryTotal.rate = categoryTotal.sent > 0 
+      ? Math.round((categoryTotal.converted / categoryTotal.sent) * 1000) / 10 
+      : 0
 
-    // Convertir a formato de gráfico
+    // Calcular % por tag
+    Object.keys(statsByTag).forEach((tag) => {
+      const s = statsByTag[tag]
+      s.rate = s.sent > 0 ? Math.round((s.converted / s.sent) * 1000) / 10 : 0
+    })
+
+    // Convertir a formato de gráfico (solo para tags seleccionados)
     const allPeriods = new Set()
-    Object.values(conversionByTagAndPeriod).forEach((tagData) => {
-      Object.keys(tagData).forEach((period) => allPeriods.add(period))
+    selectedTags.forEach((tag) => {
+      if (conversionByTagAndPeriod[tag]) {
+        Object.keys(conversionByTagAndPeriod[tag]).forEach((period) => allPeriods.add(period))
+      }
     })
 
     const sortedPeriods = Array.from(allPeriods).sort()
 
-    return sortedPeriods.map((period) => {
+    const chartData = sortedPeriods.map((period) => {
       const row = {
         period,
         label: formatGroupLabel(period),
       }
 
       selectedTags.forEach((tag) => {
-        const tagData = conversionByTagAndPeriod[tag][period]
+        const tagData = conversionByTagAndPeriod[tag]?.[period]
         if (tagData && tagData.sent > 0) {
           row[tag] = Math.round((tagData.converted / tagData.sent) * 100)
         } else {
@@ -382,7 +428,21 @@ export default function Dashboard() {
 
       return row
     })
-  }, [data, selectedTags, groupBy, getGroupKey, formatGroupLabel])
+
+    return {
+      byTag: statsByTag,
+      categoryTotal,
+      chartData,
+    }
+  }, [data, conversionCategory, selectedTags, groupBy, getGroupKey, formatGroupLabel])
+
+  // Actualizar selectedTags cuando cambia la categoría
+  const handleCategoryChange = (category) => {
+    setConversionCategory(category)
+    // Seleccionar los primeros 2 tags de la nueva categoría por defecto
+    const newTags = CONVERSION_TAGS[category] || []
+    setSelectedTags(newTags.slice(0, 2))
+  }
 
   // Colores para los tags
   const TAG_COLORS = [
@@ -397,6 +457,10 @@ export default function Dashboard() {
   ]
 
   const handleTagToggle = (tag) => {
+    // Solo permitir tags de la categoría actual
+    const categoryTags = CONVERSION_TAGS[conversionCategory] || []
+    if (!categoryTags.includes(tag)) return
+    
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     )
@@ -674,35 +738,80 @@ export default function Dashboard() {
         <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
           <h2 className="text-lg font-semibold mb-4">Tasa de Conversión (respuesta inmediata)</h2>
 
-          {/* Tag selector - cualquier tag outbound para conversión */}
+          {/* Selector de categoría */}
           <div className="mb-4">
-            <p className="text-sm text-slate-400 mb-2">Selecciona los mensajes a comparar:</p>
-            <div className="flex flex-wrap gap-2">
-              {ALL_TAGS.map((tag, idx) => (
+            <p className="text-sm text-slate-400 mb-2">Tipo de mensaje:</p>
+            <div className="flex gap-2">
+              {Object.keys(CONVERSION_TAGS).map((category) => (
                 <button
-                  key={tag}
-                  onClick={() => handleTagToggle(tag)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                    selectedTags.includes(tag)
-                      ? 'text-white'
+                  key={category}
+                  onClick={() => handleCategoryChange(category)}
+                  className={`px-4 py-2 rounded-lg font-medium transition ${
+                    conversionCategory === category
+                      ? 'bg-blue-600 text-white'
                       : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
                   }`}
-                  style={{
-                    backgroundColor: selectedTags.includes(tag)
-                      ? TAG_COLORS[selectedTags.indexOf(tag) % TAG_COLORS.length]
-                      : undefined,
-                  }}
                 >
-                  {TAG_LABELS[tag] || tag}
+                  {CONVERSION_CATEGORY_LABELS[category]}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Tarjetas de resumen por categoría */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+            {/* Tarjeta total de la categoría */}
+            <div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600">
+              <p className="text-slate-400 text-xs mb-1">Total {CONVERSION_CATEGORY_LABELS[conversionCategory]}</p>
+              <p className="text-2xl font-bold text-white">
+                {conversionStats.categoryTotal.rate}%
+              </p>
+              <p className="text-slate-500 text-xs">
+                {conversionStats.categoryTotal.converted}/{conversionStats.categoryTotal.sent}
+              </p>
+            </div>
+            
+            {/* Tarjetas por submensaje */}
+            {CONVERSION_TAGS[conversionCategory].map((tag) => {
+              const stats = conversionStats.byTag[tag] || { sent: 0, converted: 0, rate: 0 }
+              const isSelected = selectedTags.includes(tag)
+              return (
+                <div 
+                  key={tag}
+                  onClick={() => handleTagToggle(tag)}
+                  className={`rounded-lg p-3 border cursor-pointer transition ${
+                    isSelected 
+                      ? 'bg-blue-600/20 border-blue-500' 
+                      : 'bg-slate-700/30 border-slate-600 hover:border-slate-500'
+                  }`}
+                >
+                  <p className="text-slate-400 text-xs mb-1 truncate">
+                    {TAG_LABELS[tag]?.replace(/Start |Second |Final /g, '') || tag}
+                  </p>
+                  <p className={`text-2xl font-bold ${isSelected ? 'text-blue-400' : 'text-white'}`}>
+                    {stats.rate}%
+                  </p>
+                  <p className="text-slate-500 text-xs">
+                    {stats.converted}/{stats.sent}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Indicador de selección */}
+          <p className="text-sm text-slate-500 mb-4">
+            Haz clic en las tarjetas para mostrar/ocultar en el gráfico. 
+            Seleccionados: {selectedTags.length > 0 
+              ? selectedTags.map(t => TAG_LABELS[t]?.replace(/Start |Second |Final /g, '') || t).join(', ')
+              : 'Ninguno'
+            }
+          </p>
+
           {/* Gráfico de conversión */}
-          {conversionData.length > 0 ? (
+          {conversionStats.chartData.length > 0 && selectedTags.length > 0 ? (
             <ResponsiveContainer width="100%" height={350}>
-              <LineChart data={conversionData}>
+              <LineChart data={conversionStats.chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis
                   dataKey="label"
@@ -750,7 +859,7 @@ export default function Dashboard() {
             </ResponsiveContainer>
           ) : (
             <div className="h-64 flex items-center justify-center text-slate-500">
-              Selecciona al menos un tag para ver la conversión
+              Selecciona al menos un mensaje para ver la conversión
             </div>
           )}
 
