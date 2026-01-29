@@ -113,8 +113,8 @@ const MESSAGE_BUTTONS = {
 
 // URLs de audios para mensajes que son grabaciones
 const MESSAGE_AUDIOS = {
-  finalMessage_C: 'https://res.cloudinary.com/dr3mimpok/video/upload/v1769509796/personal_shopping_interested_v0_p7vzbp.m4a',
-  finalMessage_D: 'https://res.cloudinary.com/dr3mimpok/video/upload/v1769102722/seller_interested_v0_yua7zn.ogg',
+  finalMessage_C: 'https://res.cloudinary.com/dr3mimpok/video/upload/v1769683476/audio_buyers_v1_p8rmzl.m4a',
+  finalMessage_D: 'https://res.cloudinary.com/dr3mimpok/video/upload/v1769683413/audio_sellers_v1_amw3em.m4a',
 }
 
 const ALL_TAGS = [
