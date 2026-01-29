@@ -111,6 +111,12 @@ const MESSAGE_BUTTONS = {
   finalMessage_D: [],
 }
 
+// URLs de audios para mensajes que son grabaciones
+const MESSAGE_AUDIOS = {
+  finalMessage_C: 'https://res.cloudinary.com/dr3mimpok/video/upload/v1769509796/personal_shopping_interested_v0_p7vzbp.m4a',
+  finalMessage_D: 'https://res.cloudinary.com/dr3mimpok/video/upload/v1769102722/seller_interested_v0_yua7zn.ogg',
+}
+
 const ALL_TAGS = [
   ...TAG_CATEGORIES.start,
   ...TAG_CATEGORIES.second,
@@ -994,6 +1000,17 @@ export default function Dashboard() {
                           <p className="text-[10px] text-black leading-tight">
                             {MESSAGE_TEXTS[selectedTags[0]]}
                           </p>
+                          {/* Reproductor de audio si el mensaje tiene audio */}
+                          {MESSAGE_AUDIOS[selectedTags[0]] && (
+                            <audio 
+                              controls 
+                              className="w-full mt-2 h-8"
+                              key={selectedTags[0]}
+                            >
+                              <source src={MESSAGE_AUDIOS[selectedTags[0]]} />
+                              Tu navegador no soporta audio
+                            </audio>
+                          )}
                         </div>
                       ) : (
                         <div className="h-full flex items-center justify-center">
