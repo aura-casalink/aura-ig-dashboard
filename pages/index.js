@@ -113,8 +113,8 @@ const MESSAGE_BUTTONS = {
 
 // URLs de audios para mensajes que son grabaciones
 const MESSAGE_AUDIOS = {
-  finalMessage_C: 'https://res.cloudinary.com/dr3mimpok/video/upload/v1769683476/audio_buyers_v1_p8rmzl.m4a',
-  finalMessage_D: 'https://res.cloudinary.com/dr3mimpok/video/upload/v1769683413/audio_sellers_v1_amw3em.m4a',
+  finalMessage_C: 'https://cdn.aura-app.es/audio/audio_buyers_v1.m4a',
+  finalMessage_D: 'https://cdn.aura-app.es/audio/audio_sellers_v1.m4a',
 }
 
 const ALL_TAGS = [
