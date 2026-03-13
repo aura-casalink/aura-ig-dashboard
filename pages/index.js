@@ -43,6 +43,8 @@ const TAG_CATEGORIES = {
     'finalMessage_B',
     'finalMessage_C',
     'finalMessage_D',
+    'finalMessage_E',
+    'finalMessage_F',
     'finalMessageFollowUp',
   ],
   lead: ['goodByeMessage_afterLeadCreated'],
@@ -68,6 +70,8 @@ const CONVERSION_TAGS = {
     'finalMessage_B',
     'finalMessage_C',
     'finalMessage_D',
+    'finalMessage_E',
+    'finalMessage_F',
   ],
 }
 
@@ -92,6 +96,8 @@ const MESSAGE_TEXTS = {
   finalMessage_B: "Perfecto, te lo explico rápido. Como habras visto ahora mismo encontrar buenas oportunidades es complicado, por eso usamos una IA que busca por todo internet y te envía solo las mejores opciones. Si alguna encaja, nos encargamos también de negociar el precio y de todo el proceso. Es un servicio llevado por un equipo profesional apoyado en IA, así que me gustaría conocer tu caso para ver si encaja. Si te interesa, déjame tu número y seguimos por WhatsApp. ¡Gracias!",
   finalMessage_C: "🎧 Audio: Explicación para compradores",
   finalMessage_D: "🎧 Audio: Explicación para vendedores",
+  finalMessage_E: "Gracias por seguirnos. Me gustaría mostrarte cómo nuestra IA vende tu casa de la mejor manera. Aquí recibimos muchos mensajes, y a veces es difícil hablar. Si quieres, envíame tu teléfono para charlar por WhatsApp. Un saludo!",
+  finalMessage_F: "Gracias por seguirnos. Quiero enseñarte cómo la IA puede ayudarte a vender tu casa. Aquí recibimos muchos mensajes y es difícil hablar. Si quieres, envíame tu teléfono y lo vemos por WhatsApp. Un saludo!",
 }
 
 // Botones de respuesta rápida para cada mensaje
@@ -109,6 +115,8 @@ const MESSAGE_BUTTONS = {
   finalMessage_B: [],
   finalMessage_C: [],
   finalMessage_D: [],
+  finalMessage_E: [],
+  finalMessage_F: [],
 }
 
 // URLs de audios para mensajes que son grabaciones
@@ -142,6 +150,8 @@ const TAG_LABELS = {
   finalMessage_B: 'Final B',
   finalMessage_C: 'Final C',
   finalMessage_D: 'Final D',
+  finalMessage_E: 'Final E',
+  finalMessage_F: 'Final F',
   finalMessageFollowUp: 'Final Follow-up',
   goodByeMessage_afterLeadCreated: 'Lead Creado',
   goodByeMessage_afterJustContent: 'Solo Contenido',
